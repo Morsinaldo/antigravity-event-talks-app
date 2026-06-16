@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    
+    <!-- BigQuery Orange Gradient -->
+    <linearGradient id="bq-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9E0F" />
+      <stop offset="100%" stop-color="#FF5D00" />
+    </linearGradient>
+    
+    <!-- Subtle Inner Glow -->
+    <radialGradient id="inner-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff9e0f" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#ff9e0f" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Circular Rounded Background -->
+  <rect width="120" height="120" rx="60" fill="url(#bg-grad)" />
+  <circle cx="60" cy="60" r="58" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="2" />
+  
+  <!-- Glow effect -->
+  <circle cx="60" cy="60" r="45" fill="url(#inner-glow)" />
+
+  <!-- BigQuery Layered Stack Icon -->
+  <g transform="translate(35, 30)">
+    <!-- Top Layer -->
+    <path d="M25 0 L0 12.5 L25 25 L50 12.5 Z" fill="url(#bq-grad)" />
+    
+    <!-- Middle Layer -->
+    <path d="M0 22.5 L25 35 L50 22.5" fill="none" stroke="url(#bq-grad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Bottom Layer -->
+    <path d="M0 32.5 L25 45 L50 32.5" fill="none" stroke="url(#bq-grad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>
