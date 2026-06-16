@@ -553,6 +553,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // Periodically update the "last updated" visual string
     setInterval(updateLastUpdatedText, 15000);
 
+    // Theme Switcher Logic
+    const themeToggleCheckbox = document.getElementById('theme-toggle-checkbox');
+    
+    // Check local storage for theme preference
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        themeToggleCheckbox.checked = true;
+    } else {
+        document.body.classList.remove('light-theme');
+        themeToggleCheckbox.checked = false;
+    }
+
+    themeToggleCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            document.body.classList.add('light-theme');
+            localStorage.setItem('theme', 'light');
+        } else {
+            document.body.classList.remove('light-theme');
+            localStorage.setItem('theme', 'dark');
+        }
+    });
+
     // Initial Load
     loadReleases(false);
 });
