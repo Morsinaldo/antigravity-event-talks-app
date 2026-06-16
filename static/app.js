@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const emptyStateView = document.getElementById('empty-state-view');
     const searchInput = document.getElementById('search-input');
     const refreshButton = document.getElementById('refresh-button');
+    const exportCsvButton = document.getElementById('export-csv-button');
     const resultsCountDisplay = document.getElementById('results-count-display');
     const lastUpdatedDisplay = document.getElementById('last-updated-display');
     const categoryFiltersContainer = document.getElementById('category-filters-container');
@@ -237,12 +238,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     card.innerHTML = `
                         <div class="update-card-header">
                             <span class="badge ${item.badge_class}">${item.type}</span>
-                            <div class="tweet-select-indicator">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                </svg>
-                                <span>Select</span>
+                            <div class="card-header-actions">
+                                <button class="card-action-btn btn-copy-card" title="Copy text to clipboard">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                    <span>Copy</span>
+                                </button>
+                                <div class="tweet-select-indicator">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                    </svg>
+                                    <span>Select</span>
+                                </div>
                             </div>
                         </div>
                         <div class="update-card-content">
@@ -250,10 +260,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
                     
+                    // Copy card content to clipboard listener
+                    const copyBtn = card.querySelector('.btn-copy-card');
+                    copyBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Prevent card selection click
+                        navigator.clipboard.writeText(item.text).then(() => {
+                            const btnSpan = copyBtn.querySelector('span');
+                            const originalText = btnSpan.textContent;
+                            btnSpan.textContent = 'Copied!';
+                            copyBtn.classList.add('copied');
+                            setTimeout(() => {
+                                btnSpan.textContent = originalText;
+                                copyBtn.classList.remove('copied');
+                            }, 2000);
+                        }).catch(err => {
+                            console.error('Failed to copy text: ', err);
+                            showNotification('Failed to copy to clipboard.');
+                        });
+                    });
+
                     // Click event to select update for draft
                     card.addEventListener('click', (e) => {
-                        // Prevent selection if they click an actual link in the card
-                        if (e.target.tagName === 'A') return;
+                        // Prevent selection if they click an actual link in the card or the copy button
+                        if (e.target.tagName === 'A' || e.target.closest('.btn-copy-card')) return;
                         
                         selectUpdate(item, card);
                     });
@@ -413,6 +442,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Clear Selection Button Click
     clearSelectionBtn.addEventListener('click', clearSelection);
+
+    // Export to CSV Button Click
+    exportCsvButton.addEventListener('click', exportToCSV);
+
+    function exportToCSV() {
+        const exportData = [];
+        allReleases.forEach(entry => {
+            entry.sub_items.forEach(item => {
+                const matchesCategory = (activeCategory === 'all') || 
+                                       (item.type.toLowerCase().includes(activeCategory));
+                const searchLower = searchQuery.toLowerCase();
+                const matchesSearch = (searchQuery === '') || 
+                                     entry.title.toLowerCase().includes(searchLower) ||
+                                     item.type.toLowerCase().includes(searchLower) ||
+                                     item.text.toLowerCase().includes(searchLower);
+                                     
+                if (matchesCategory && matchesSearch) {
+                    exportData.push({
+                        date: entry.title,
+                        type: item.type,
+                        text: item.text,
+                        link: item.entry_link
+                    });
+                }
+            });
+        });
+        
+        if (exportData.length === 0) {
+            showNotification('No data to export!');
+            return;
+        }
+        
+        const escapeCSV = (text) => {
+            if (text === null || text === undefined) return '';
+            let val = text.toString();
+            val = val.replace(/"/g, '""');
+            if (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
+                return `"${val}"`;
+            }
+            return val;
+        };
+        
+        const headers = ['Date', 'Type', 'Description', 'Link'];
+        const csvRows = [headers.join(',')];
+        
+        exportData.forEach(row => {
+            const values = [
+                escapeCSV(row.date),
+                escapeCSV(row.type),
+                escapeCSV(row.text),
+                escapeCSV(row.link)
+            ];
+            csvRows.push(values.join(','));
+        });
+        
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `bigquery_release_notes_${activeCategory}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showNotification(`Exported ${exportData.length} records to CSV!`);
+    }
 
     // Toast/Status Notification Helper
     function showNotification(message) {
