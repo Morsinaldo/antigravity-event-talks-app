@@ -1,0 +1,55 @@
+[project]
+name = "secure-travel-planner"
+version = "0.1.0"
+description = "Secure local multi-agent travel planner built with Google ADK and MCP"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "beautifulsoup4>=4.12.0,<5.0.0",
+    "flask>=3.0.3,<4.0.0",
+    "google-adk>=2.0.0,<3.0.0",
+    "httpx>=0.27.0,<1.0.0",
+    "mcp>=1.9.0,<2.0.0",
+    "pydantic>=2.10.0,<3.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+    "ruff>=0.4.6,<1.0.0",
+]
+
+[project.optional-dependencies]
+eval = ["google-adk[eval]>=2.0.0,<3.0.0"]
+lint = [
+    "codespell>=2.2.0,<3.0.0",
+    "ruff>=0.4.6,<1.0.0",
+    "ty>=0.0.1a0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trip_planner"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".agents",
+]
+
+[tool.ruff.lint]
+select = ["B", "C", "E", "F", "I", "RUF", "UP", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["trip_planner"]

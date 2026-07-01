@@ -39,6 +39,15 @@ instance/
 .env.local
 .env.*.local
 
+# Local runtime data
+logs/
+*.db
+.adk/
+.pytest_cache/
+.ruff_cache/
+.agents-cli-scripts/
+.google-agents-cli/
+
 # IDEs and Editors
 .vscode/
 .idea/
