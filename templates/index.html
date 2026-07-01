@@ -1,249 +1,762 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BigQuery Release Notes Hub & Twitter Composer</title>
-    <meta name="description" content="Track Google Cloud BigQuery releases and draft updates to Twitter / X in real-time.">
-    <!-- Google Fonts -->
+    <title>TripOrchestrator AI - Sistema de Viagem Multi-Agente</title>
+    <meta name="description" content="Planejamento de viagens com inteligência artificial multi-agente. Rotas, gastronomia, hospedagem e eventos orquestrados pelo Google Gemini.">
+
+    <!-- Google Fonts: Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Main Stylesheet -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Google Maps JS API will be loaded in the body -->
+
+    <!-- Custom Style Sheet -->
     <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="dark-theme">
+<body>
     <div class="app-container">
-        <!-- Sidebar Navigation / Header Branding -->
-        <header class="app-header">
-            <div class="logo-container">
-                <div class="logo-icon-wrapper">
-                    <!-- Custom SVG representation of BigQuery -->
-                    <svg viewBox="0 0 24 24" fill="none" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#bq-gradient)" />
-                        <path d="M2 17L12 22L22 17" stroke="url(#bq-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                        <path d="M2 12L12 17L22 12" stroke="url(#bq-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                        <defs>
-                            <linearGradient id="bq-gradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-                                <stop stop-color="#FF9E0F" />
-                                <stop offset="1" stop-color="#FF5D00" />
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                </div>
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i data-lucide="plane-takeoff" class="brand-icon"></i>
                 <div class="brand-text">
-                    <h1>BigQuery</h1>
-                    <span class="sub-brand">Release Notes Hub</span>
+                    <h1>TripOrchestrator</h1>
+                    <span data-i18n="sidebar.subtitle">Multi-Agent AI Platform</span>
                 </div>
             </div>
-            
-            <nav class="main-nav">
-                <div class="nav-title">Navigation</div>
-                <ul>
-                    <li class="active">
-                        <a href="#" id="nav-timeline">
-                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>Release Feed</span>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-            
-            <div class="theme-footer">
-                <div class="theme-toggle-wrapper">
-                    <span class="theme-label">Light Theme</span>
-                    <label class="switch" for="theme-toggle-checkbox">
-                        <input type="checkbox" id="theme-toggle-checkbox" aria-label="Toggle light theme">
-                        <span class="slider round"></span>
-                    </label>
+
+            <button id="btn-new-trip" class="btn-primary-glow btn-full">
+                <i data-lucide="plus"></i> <span data-i18n="sidebar.newTrip">Novo Roteiro</span>
+            </button>
+
+            <div class="sidebar-menu">
+                <h2 data-i18n="sidebar.history">Histórico de Viagens</h2>
+                <div id="trips-history-list" class="history-list">
+                    <!-- Loaded dynamically via JS -->
+                    <div class="history-loading">
+                        <span class="spinner-small"></span> <span data-i18n="sidebar.loading">Carregando histórico...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <!-- Language Toggle -->
+                <div class="lang-toggle-row">
+                    <i data-lucide="languages" style="width:14px;height:14px;color:var(--text-dark);"></i>
+                    <button id="lang-btn-pt" class="lang-btn active" onclick="setLanguage('pt')" title="Português">PT</button>
+                    <span class="lang-divider">|</span>
+                    <button id="lang-btn-en" class="lang-btn" onclick="setLanguage('en')" title="English">EN</button>
                 </div>
                 <div class="connection-status">
                     <span class="status-dot online"></span>
-                    <span id="status-text">Connected</span>
+                    <span class="status-text" data-i18n="sidebar.status">Google AI Studio Ativo</span>
                 </div>
             </div>
-        </header>
+        </aside>
 
-        <!-- Main Dashboard View -->
-        <main class="dashboard-main">
-            <!-- Top Action / Filtering Bar -->
-            <div class="dashboard-toolbar">
-                <div class="search-filter-group">
-                    <div class="search-wrapper">
-                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input type="text" id="search-input" placeholder="Search releases by keyword, date, or feature..." aria-label="Search releases">
-                    </div>
-                    
-                    <div class="category-filters" id="category-filters-container">
-                        <button class="filter-btn active" data-category="all">All</button>
-                        <button class="filter-btn" data-category="feature">
-                            <span class="filter-dot dot-feature"></span> Features
-                        </button>
-                        <button class="filter-btn" data-category="issue">
-                            <span class="filter-dot dot-issue"></span> Issues
-                        </button>
-                        <button class="filter-btn" data-category="deprecation">
-                            <span class="filter-dot dot-deprecation"></span> Deprecations
-                        </button>
-                    </button>
+        <!-- Main Workspace -->
+        <main class="main-content">
+            <!-- Screen 1: Trip Config Form -->
+            <section id="form-screen" class="workspace-screen active">
+                <div class="welcome-header">
+                    <h2 data-i18n="form.heading">Para onde vamos hoje?</h2>
+                    <p data-i18n="form.subheading">Preencha os dados e deixe nossa equipe de sub-agentes inteligentes desenhar o roteiro ideal, rotas, gastronomia e eventos.</p>
+                </div>
+
+                <!-- Quick Templates / Trip Styles Selector -->
+                <div class="trip-templates-container">
+                    <h3 data-i18n="form.chooseStyle">Escolha um Estilo de Roteiro:</h3>
+                    <div class="trip-templates">
+                        <div class="template-card active" data-type="roadtrip" onclick="selectTemplate('roadtrip')">
+                            <i data-lucide="milestone" class="template-icon"></i>
+                            <h4 data-i18n="template.roadtrip.title">Road Trip / Estrada</h4>
+                            <p data-i18n="template.roadtrip.desc">Natal para Fortaleza, paradas panorâmicas, hotéis de estrada, previsão de clima e postos.</p>
+                        </div>
+                        <div class="template-card" data-type="business" onclick="selectTemplate('business')">
+                            <i data-lucide="briefcase" class="template-icon"></i>
+                            <h4 data-i18n="template.business.title">Congresso / Negócios</h4>
+                            <p data-i18n="template.business.desc">Congresso em Milão, agenda, deslocamentos urbanos rápidos, checklists e vestuário correto.</p>
+                        </div>
+                        <div class="template-card" data-type="gastronomy" onclick="selectTemplate('gastronomy')">
+                            <i data-lucide="utensils" class="template-icon"></i>
+                            <h4 data-i18n="template.gastronomy.title">Explorador Gastronômico</h4>
+                            <p data-i18n="template.gastronomy.desc">Comida típica regional, ranking de restaurantes, receitas locais e lista de compras com custos.</p>
+                        </div>
+                        <div class="template-card" data-type="custom" onclick="selectTemplate('custom')">
+                            <i data-lucide="sparkles" class="template-icon"></i>
+                            <h4 data-i18n="template.custom.title">Orquestrador Livre</h4>
+                            <p data-i18n="template.custom.desc">Planejamento completo customizado com ativação dinâmica de múltiplos sub-agentes.</p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="toolbar-actions">
-                    <span class="last-updated-time" id="last-updated-display">Last updated: Just now</span>
-                    <button class="action-btn btn-export" id="export-csv-button" title="Export current filtered results to CSV">
-                        <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        <span>Export CSV</span>
+                <!-- Form Section -->
+                <form id="trip-config-form" class="glass-card trip-form">
+                    <input type="hidden" id="trip_type" value="roadtrip">
+
+                    <!-- Module Selection Checkboxes -->
+                    <div class="form-group mb-4">
+                        <label style="font-weight: 600; font-size: 0.95rem; margin-bottom: 12px; display: block; color: var(--text-light);">
+                            <i data-lucide="layers" style="width:16px; height:16px; vertical-align: middle; margin-right: 6px; color: var(--color-primary);"></i>
+                            Selecione as Funcionalidades Desejadas:
+                        </label>
+                        <div class="preferences-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                            <label class="preference-checkbox">
+                                <input type="checkbox" id="module-roadtrip" value="road_trip" checked onchange="updateFormFieldsVisibility()">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="milestone"></i> <span>Rota / Road Trip</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" id="module-lodging" value="lodging" checked onchange="updateFormFieldsVisibility()">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="bed"></i> <span>Hospedagem &amp; Transp.</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" id="module-cuisine" value="cuisine" checked onchange="updateFormFieldsVisibility()">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="utensils"></i> <span>Gastronomia</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" id="module-agenda" value="agenda" checked onchange="updateFormFieldsVisibility()">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="calendar-days"></i> <span>Atrações &amp; Eventos</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Origin + Destination -->
+                    <div class="form-row">
+                        <div class="form-group col-md-6" id="group-origin">
+                            <label for="origin">
+                                <i data-lucide="map-pin"></i>
+                                <span data-i18n="field.origin">Origem</span>
+                                <span class="optional-badge" data-i18n="field.optional">(opcional)</span>
+                            </label>
+                            <input type="text" id="origin" placeholder="Ex: Natal, RN" value="Natal, RN">
+                        </div>
+                        <div class="form-group col-md-6" id="group-destination">
+                            <label for="destination">
+                                <i data-lucide="map-pinned"></i>
+                                <span data-i18n="field.destination">Destino</span>
+                                <span class="required">*</span>
+                            </label>
+                            <input type="text" id="destination" placeholder="Ex: Fortaleza, CE" required value="Fortaleza, CE">
+                        </div>
+                    </div>
+
+                    <!-- Dates row with enable checkboxes -->
+                    <div class="form-row" id="group-dates">
+                        <div class="form-group col-md-6">
+                            <label>
+                                <i data-lucide="calendar"></i>
+                                <span data-i18n="field.startDate">Data de Início</span>
+                                <label class="field-toggle-label">
+                                    <input type="checkbox" id="enable-start-date" class="field-toggle" checked onchange="toggleField('start_date', this.checked)">
+                                    <span class="field-toggle-track"></span>
+                                </label>
+                            </label>
+                            <input type="date" id="start_date" value="2026-07-10">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>
+                                <i data-lucide="calendar-check"></i>
+                                <span data-i18n="field.endDate">Data de Retorno</span>
+                                <label class="field-toggle-label">
+                                    <input type="checkbox" id="enable-end-date" class="field-toggle" checked onchange="toggleField('end_date', this.checked)">
+                                    <span class="field-toggle-track"></span>
+                                </label>
+                            </label>
+                            <input type="date" id="end_date" value="2026-07-17">
+                        </div>
+                    </div>
+
+                    <!-- Budget + Dietary with enable checkboxes -->
+                    <div class="form-row">
+                        <div class="form-group col-md-6" id="group-budget">
+                            <label>
+                                <i data-lucide="dollar-sign"></i>
+                                <span data-i18n="field.budget">Orçamento Máximo</span>
+                                <label class="field-toggle-label">
+                                    <input type="checkbox" id="enable-budget" class="field-toggle" checked onchange="toggleField('budget', this.checked)">
+                                    <span class="field-toggle-track"></span>
+                                </label>
+                            </label>
+                            <input type="text" id="budget" placeholder="Ex: R$ 2.000 ou Baixo custo" value="R$ 1.500">
+                        </div>
+                        <div class="form-group col-md-6" id="group-dietary">
+                            <label>
+                                <i data-lucide="shield-alert"></i>
+                                <span data-i18n="field.dietary">Restrições Alimentares</span>
+                                <label class="field-toggle-label">
+                                    <input type="checkbox" id="enable-dietary" class="field-toggle" checked onchange="toggleField('dietary_restrictions', this.checked)">
+                                    <span class="field-toggle-track"></span>
+                                </label>
+                            </label>
+                            <input type="text" id="dietary_restrictions" placeholder="Ex: Sem frutos do mar, Vegano" value="Nenhuma restrição alimentar">
+                        </div>
+                    </div>
+
+                    <!-- Available Hours (scheduling constraint) -->
+                    <div class="form-row" id="group-available-hours">
+                        <div class="form-group col-md-12">
+                            <label>
+                                <i data-lucide="clock"></i>
+                                <span data-i18n="field.availableHours">Horários Disponíveis para Visitas</span>
+                                <label class="field-toggle-label">
+                                    <input type="checkbox" id="enable-hours" class="field-toggle" onchange="toggleField('available_hours', this.checked)">
+                                    <span class="field-toggle-track"></span>
+                                </label>
+                            </label>
+                            <input type="text" id="available_hours"
+                                placeholder="Ex: Somente à noite após 18h | Manhãs das 9h às 13h | Dia todo"
+                                value=""
+                                disabled
+                                style="opacity:0.4; cursor:not-allowed;">
+                        </div>
+                    </div>
+
+                    <!-- Preferences Section -->
+                    <div class="form-group" id="group-preferences">
+                        <label><i data-lucide="heart"></i> <span data-i18n="field.preferences">Preferências de Viagem (Selecione as que combinam com você)</span></label>
+                        <div class="preferences-grid">
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="historical" checked>
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="landmark"></i> <span data-i18n="pref.historical">Locais Históricos</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="nature" checked>
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="sunset"></i> <span data-i18n="pref.nature">Praias &amp; Natureza</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="museums">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="gallery-horizontal"></i> <span data-i18n="pref.museums">Museus &amp; Artes</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="festive">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="music"></i> <span data-i18n="pref.festive">Festivo / Baladas</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="adventure">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="compass"></i> <span data-i18n="pref.adventure">Aventura / Trilhas</span>
+                            </label>
+                            <label class="preference-checkbox">
+                                <input type="checkbox" name="preferences" value="shopping">
+                                <span class="checkbox-custom"></span>
+                                <i data-lucide="shopping-bag"></i> <span data-i18n="pref.shopping">Compras / Mercados</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Ingredients in Fridge (Hidden by default unless Cuisine style is selected) -->
+                    <div class="form-group" id="fridge-items-group" style="display: none;">
+                        <label>
+                            <i data-lucide="refrigerator"></i>
+                            <span data-i18n="field.fridge">Ingredientes já existentes em casa (para a receita típica)</span>
+                            <label class="field-toggle-label">
+                                <input type="checkbox" id="enable-fridge" class="field-toggle" checked onchange="toggleField('fridge_items', this.checked)">
+                                <span class="field-toggle-track"></span>
+                            </label>
+                        </label>
+                        <input type="text" id="fridge_items" placeholder="Ex: Manteiga, sal, cebola (separamos o que falta comprar)" value="Manteiga de garrafa, sal, alho">
+                    </div>
+
+                    <!-- Detailed Custom Prompt -->
+                    <div class="form-group" id="group-description">
+                        <label for="description"><i data-lucide="message-square"></i> <span data-i18n="field.description">Instruções ou Desejos Especiais</span></label>
+                        <textarea id="description" rows="3" placeholder="Ex: Pretendo ir de carro, quero dicas de postos baratos. Adoro comer carne de sol e visitar vilarejos de pescadores pelo caminho.">Pretendo dirigir pelo litoral. Quero recomendações de postos, paradas gastronômicas rápidas e mirantes bonitos.</textarea>
+                    </div>
+
+                    <button type="submit" class="btn-primary-glow btn-large">
+                        <i data-lucide="zap"></i> <span data-i18n="form.submit">Orquestrar Viagem com Inteligência Artificial</span>
                     </button>
-                    <button class="action-btn btn-refresh" id="refresh-button" title="Refresh release notes">
-                        <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                        </svg>
-                        <span>Refresh</span>
+                </form>
+            </section>
+
+            <!-- Screen 2: Loading & Agent Monitor Console -->
+            <section id="loading-screen" class="workspace-screen">
+                <div class="loading-header">
+                    <div class="radar-container">
+                        <div class="radar-circle"></div>
+                        <div class="radar-circle delay-1"></div>
+                        <div class="radar-circle delay-2"></div>
+                        <i data-lucide="cpu" class="radar-icon"></i>
+                    </div>
+                    <h2 data-i18n="loading.title">Ativando Rede Multi-Agente...</h2>
+                    <p data-i18n="loading.subtitle">O Orquestrador está analisando sua solicitação e disparando os sub-agentes em paralelo no Google AI Studio.</p>
+                </div>
+
+                <div class="glass-card console-card">
+                    <div class="console-header">
+                        <div class="console-dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <span class="console-title">Multi-Agent Console Stream</span>
+                    </div>
+                    <div id="console-stream-content" class="console-body">
+                        <!-- Dynamic agent thinking logs appear here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Screen 3: Results Display -->
+            <section id="results-screen" class="workspace-screen">
+                <div class="results-header">
+                    <div class="results-title-section">
+                        <h2 id="result-trip-title">Roteiro Personalizado</h2>
+                        <div class="badge-row">
+                            <span id="badge-trip-type" class="badge badge-indigo">Road Trip</span>
+                            <span class="badge badge-cyan"><i data-lucide="cpu" class="icon-small"></i> <span data-i18n="result.badge">Multi-Agente Coordenado</span></span>
+                            <span id="badge-trip-cost" class="badge badge-amber" style="display: none; font-size: 0.8rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); color: #f59e0b;">
+                                <i data-lucide="coins" class="icon-small" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> <span id="trip-cost-text"></span>
+                            </span>
+                        </div>
+                    </div>
+                    <button id="btn-back" class="btn-secondary">
+                        <i data-lucide="arrow-left"></i> <span data-i18n="result.back">Modificar Roteiro</span>
                     </button>
                 </div>
-            </div>
 
-            <!-- Content Grid: Release Timeline & Tweet Composer Side-by-Side -->
-            <div class="dashboard-grid">
-                <!-- Timeline Section -->
-                <section class="timeline-section">
-                    <div class="section-header">
-                        <h2>Activity Timeline</h2>
-                        <span class="results-count" id="results-count-display">Showing 0 updates</span>
-                    </div>
+                <!-- Tabbed Viewport Navigation -->
+                <nav class="results-tabs">
+                    <button class="tab-link active" data-tab="tab-map">
+                        <i data-lucide="map"></i> <span data-i18n="tab.map">Rota &amp; Mapa</span>
+                    </button>
+                    <button class="tab-link" data-tab="tab-cuisine">
+                        <i data-lucide="utensils-cross"></i> <span data-i18n="tab.cuisine">Gastronomia &amp; Receitas</span>
+                    </button>
+                    <button class="tab-link" data-tab="tab-logistics">
+                        <i data-lucide="hotel"></i> <span data-i18n="tab.logistics">Hospedagem &amp; Clima</span>
+                    </button>
+                    <button class="tab-link" data-tab="tab-agenda">
+                        <i data-lucide="calendar-days"></i> <span data-i18n="tab.agenda">Atividades &amp; Eventos</span>
+                    </button>
+                    <button class="tab-link" data-tab="tab-traces">
+                        <i data-lucide="binary"></i> <span data-i18n="tab.traces">Rastreamento IA</span>
+                    </button>
+                </nav>
 
-                    <!-- Loading / Empty States -->
-                    <div class="loading-state" id="loading-spinner">
-                        <div class="spinner"></div>
-                        <p>Fetching BigQuery release notes from Google Cloud feed...</p>
-                    </div>
+                <!-- Tab Content Containers -->
+                <div class="tab-content-container">
 
-                    <div class="empty-state hidden" id="empty-state-view">
-                        <div class="empty-icon-wrapper">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                        </div>
-                        <h3>No release notes match your filters</h3>
-                        <p>Try searching for a different keyword or resetting your filters.</p>
-                        <button class="btn-primary" id="reset-filters-btn">Reset Filters</button>
-                    </div>
-
-                    <!-- Timeline Content container -->
-                    <div class="timeline-container" id="timeline-container">
-                        <!-- Dynamic content injected here -->
-                    </div>
-                </section>
-
-                <!-- Interactive Tweet Composer Panel -->
-                <section class="composer-section">
-                    <div class="composer-card-sticky">
-                        <div class="section-header">
-                            <h2>Tweet Composer</h2>
-                            <span class="composer-subtitle">Draft and share updates to X</span>
-                        </div>
-
-                        <!-- Current Selected Source Info -->
-                        <div class="selected-source-banner" id="selected-source-banner">
-                            <div class="source-info">
-                                <span class="badge" id="source-badge">Feature</span>
-                                <span class="source-date" id="source-date">Select an update from the timeline</span>
-                            </div>
-                            <button class="clear-selection-btn hidden" id="clear-selection-btn" title="Clear selection">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            </button>
-                        </div>
-
-                        <!-- Composer Text Area -->
-                        <div class="textarea-wrapper">
-                            <textarea id="tweet-textarea" placeholder="Select an update from the timeline or type your own tweet here..." maxlength="400" aria-label="Tweet content"></textarea>
-                            
-                            <!-- Suggestions Tags -->
-                            <div class="tag-helper-list">
-                                <span class="tag-chip" data-tag="#BigQuery">#BigQuery</span>
-                                <span class="tag-chip" data-tag="#GoogleCloud">#GoogleCloud</span>
-                                <span class="tag-chip" data-tag="#DataAnalytics">#DataAnalytics</span>
-                                <span class="tag-chip" data-tag="#Gemini">#Gemini</span>
-                                <span class="tag-chip" data-tag="#GenerativeAI">#GenerativeAI</span>
-                            </div>
-                        </div>
-
-                        <!-- Composer Footer with Limit indicator & Tweet button -->
-                        <div class="composer-footer">
-                            <div class="char-count-group">
-                                <svg class="progress-ring" width="36" height="36">
-                                    <circle class="progress-ring__circle-bg" stroke="#1e293b" stroke-width="3" fill="transparent" r="14" cx="18" cy="18"/>
-                                    <circle class="progress-ring__circle" id="char-progress-ring" stroke="#1a73e8" stroke-width="3" fill="transparent" r="14" cx="18" cy="18"/>
-                                </svg>
-                                <span class="char-count-text" id="char-count-display">280</span>
-                            </div>
-                            
-                            <button class="btn-tweet" id="btn-share-tweet" disabled>
-                                <svg class="tweet-icon" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                                </svg>
-                                <span>Post to X</span>
-                            </button>
-                        </div>
-
-                        <!-- Beautiful Twitter Mock Preview -->
-                        <div class="preview-header-divider">
-                            <span>Live Preview</span>
-                        </div>
-                        
-                        <div class="mock-tweet-card">
-                            <div class="mock-tweet-header">
-                                <img src="/static/bq-logo.svg" alt="BigQuery Logo" class="mock-profile-pic">
-                                <div class="mock-user-meta">
-                                    <div class="mock-display-name">
-                                        <span>Google Cloud BigQuery Updates</span>
-                                        <svg class="mock-verified-badge" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                                        </svg>
+                    <!-- Tab 1: Map & Route nodes -->
+                    <div id="tab-map" class="tab-content active">
+                        <div class="split-view">
+                            <div class="view-left">
+                                <div class="glass-card stat-card-row">
+                                    <div class="stat-box">
+                                        <span class="stat-label" data-i18n="map.distance">Distância Prevista</span>
+                                        <span id="route-distance" class="stat-val">-</span>
                                     </div>
-                                    <div class="mock-username">@GoogleCloud</div>
+                                    <div class="stat-box border-left">
+                                        <span class="stat-label" data-i18n="map.duration">Tempo de Percurso</span>
+                                        <span id="route-duration" class="stat-val">-</span>
+                                    </div>
+                                    <div class="stat-box border-left">
+                                        <span class="stat-label" data-i18n="map.view">Visualização do Mapa</span>
+                                        <button id="btn-snap-toggle" class="btn-snap-inactive">
+                                            <i data-lucide="navigation"></i> <span data-i18n="map.straightLine">Reta Direta</span>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="mock-tweet-logo">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                                    </svg>
+                                <div class="timeline-nodes-card glass-card">
+                                    <h3 data-i18n="map.routePoints">Pontos da Rota Sugeridos</h3>
+                                    <div id="route-nodes-list" class="nodes-timeline">
+                                        <!-- Dynamic route nodes -->
+                                    </div>
+                                </div>
+                                <div class="glass-card mt-4 sources-card" id="location-sources-panel" style="display: none;">
+                                    <h4 style="display: flex; align-items: center; gap: 8px; font-size: 1rem; margin-bottom: 12px; color: var(--text-primary);">
+                                        <i data-lucide="link" style="width: 16px; height: 16px;"></i>
+                                        <span data-i18n="sources.title">Fontes de Informação</span>
+                                    </h4>
+                                    <ul id="location-sources-list" class="sources-list-ul" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Dynamic links -->
+                                    </ul>
                                 </div>
                             </div>
-                            
-                            <div class="mock-tweet-body" id="mock-tweet-text">
-                                Select an update above to draft a tweet. You can edit the text before posting.
-                            </div>
-                            
-                            <div class="mock-tweet-footer">
-                                <span class="mock-time" id="mock-tweet-time">6:37 PM · Jun 16, 2026</span>
-                                <span class="mock-client">· Web Intent</span>
-                            </div>
-                            
-                            <div class="mock-tweet-actions">
-                                <div class="action-icon" title="Reply">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                                    <span>24</span>
-                                </div>
-                                <div class="action-icon" title="Repost">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 1l4 4-4 4M21 5H9a5 5 0 0 0-5 5v3M7 23l-4-4 4-4M3 19h12a5 5 0 0 0 5-5v-3"></path></svg>
-                                    <span>142</span>
-                                </div>
-                                <div class="action-icon" title="Like">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-                                    <span>1.2K</span>
-                                </div>
-                                <div class="action-icon" title="Share">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"></path></svg>
+                            <div class="view-right">
+                                <div id="map-wrapper" class="glass-card map-card">
+                                    <!-- Leaflet map container -->
+                                    <div id="map"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </section>
-            </div>
+
+                    <!-- Tab 2: Cuisine, Restaurants, Recipes, Shopping List -->
+                    <div id="tab-cuisine" class="tab-content">
+                        <div class="split-view">
+                            <div class="view-left">
+                                <div class="glass-card mb-4">
+                                    <h3 data-i18n="cuisine.typicalDishes">Pratos Típicos da Região</h3>
+                                    <div id="typical-dishes-list" class="typical-dishes-grid">
+                                        <!-- Dynamic typical dishes -->
+                                    </div>
+                                </div>
+
+                                <div class="glass-card">
+                                    <h3 data-i18n="cuisine.ranking">Ranking de Restaurantes Recomendados</h3>
+                                    <div id="restaurant-ranking-list" class="restaurant-list">
+                                        <!-- Dynamic restaurant list -->
+                                    </div>
+                                </div>
+                                <div class="glass-card mt-4 sources-card" id="cuisine-sources-panel" style="display: none;">
+                                    <h4 style="display: flex; align-items: center; gap: 8px; font-size: 1rem; margin-bottom: 12px; color: var(--text-primary);">
+                                        <i data-lucide="link" style="width: 16px; height: 16px;"></i>
+                                        <span data-i18n="sources.title">Fontes de Informação</span>
+                                    </h4>
+                                    <ul id="cuisine-sources-list" class="sources-list-ul" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Dynamic links -->
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="view-right">
+                                <!-- STATE 1: Typical Dish Details (Visible by default) -->
+                                <div class="glass-card mb-4" id="cuisine-dish-detail-panel">
+                                    <div class="dish-detail-header-layout">
+                                        <div class="dish-detail-text">
+                                            <h3 id="cuisine-dish-name" data-i18n="cuisine.dishName">Nome do Prato</h3>
+                                            <div id="cuisine-dish-dietary-tags" class="dietary-tags-row mt-2">
+                                                <!-- Dynamic tags -->
+                                            </div>
+                                            <h5 class="mt-3" data-i18n="cuisine.history">História e Cultura</h5>
+                                            <p id="cuisine-dish-history" class="suggestions-text">-</p>
+                                        </div>
+                                        <div class="dish-detail-image-card">
+                                            <img id="cuisine-dish-photo" src="/static/image-placeholder.svg" alt="Imagem verificada não disponível">
+                                            <a id="cuisine-dish-photo-attribution" class="media-attribution" hidden></a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom Panel: Typical Dish Recipe and Shopping List Tabs -->
+                                <div class="glass-card" id="cuisine-dish-recipe-panel">
+                                    <div class="panel-header-row mb-3">
+                                        <div class="mini-tabs">
+                                            <button class="mini-tab-link active" id="btn-subtab-recipe" onclick="switchCuisineSubTab('recipe')">
+                                                <i data-lucide="cooking-pot"></i> <span data-i18n="cuisine.recipe">Receita &amp; Preparo</span>
+                                            </button>
+                                            <button class="mini-tab-link" id="btn-subtab-shopping" onclick="switchCuisineSubTab('shopping')">
+                                                <i data-lucide="shopping-cart"></i> <span data-i18n="cuisine.shopping">Lista de Compras</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Recipe Sub-Tab -->
+                                    <div id="cuisine-subtab-recipe" class="mini-tab-content active">
+                                        <div class="recipe-section">
+                                            <h5 data-i18n="cuisine.ingredients">Ingredientes Necessários</h5>
+                                            <ul id="cuisine-recipe-ingredients" class="list-bullet">
+                                                <!-- Dynamic ingredients -->
+                                            </ul>
+                                        </div>
+                                        <div class="recipe-section border-top">
+                                            <h5 data-i18n="cuisine.steps">Modo de Preparo</h5>
+                                            <ol id="cuisine-recipe-steps" class="list-numbered">
+                                                <!-- Dynamic steps -->
+                                            </ol>
+                                        </div>
+                                    </div>
+
+                                    <!-- Shopping List Sub-Tab -->
+                                    <div id="cuisine-subtab-shopping" class="mini-tab-content">
+                                        <div class="shopping-header">
+                                            <h4 data-i18n="cuisine.toBuy">Ingredientes a Comprar</h4>
+                                            <div class="shopping-cost-badge">
+                                                <span data-i18n="cuisine.estimatedCost">Custo Estimado</span>
+                                                <strong id="cuisine-shopping-cost">-</strong>
+                                            </div>
+                                        </div>
+                                        <p class="shopping-intro mt-2" data-i18n="cuisine.shoppingIntro">Ingredientes que faltam no seu armário:</p>
+                                        <ul id="cuisine-shopping-list-ul" class="shopping-list-check">
+                                            <!-- Dynamic shopping list -->
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <!-- STATE 2: Restaurant Details (Hidden by default) -->
+                                <div class="glass-card mb-4" id="cuisine-restaurant-map-panel" style="display: none;">
+                                    <div class="panel-header-row">
+                                        <h3 id="cuisine-map-restaurant-name" data-i18n="cuisine.restLocation">Localização do Restaurante</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultCuisineView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="cuisine.backToDish">Ver Prato Típico</span>
+                                        </button>
+                                    </div>
+                                    <div id="restaurant-detail-url-container" style="margin-top: 14px; display: none; padding: 0 16px;">
+                                        <a id="restaurant-detail-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary-glow btn-small" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; width: fit-content; font-size: 0.85rem; padding: 6px 12px;">
+                                            <i data-lucide="external-link" style="width: 14px; height: 14px;"></i> <span>Visitar Website do Restaurante</span>
+                                        </a>
+                                    </div>
+                                    <div class="map-card" style="height: 300px; margin-top: 14px;">
+                                        <div id="restaurant-map"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom Panel: Restaurant Menu -->
+                                <div class="glass-card" id="cuisine-menu-panel" style="display: none;">
+                                    <div class="panel-header-row">
+                                        <h3 data-i18n="cuisine.menu">Cardápio Sugerido</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultCuisineView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="cuisine.backToDish">Ver Prato Típico</span>
+                                        </button>
+                                    </div>
+                                    <div class="menu-container" style="margin-top: 14px;">
+                                        <p class="shopping-intro" style="margin-bottom: 12px;" data-i18n="cuisine.menuIntro">Especialidades recomendadas com preços estimados (clique para detalhes):</p>
+                                        <div id="restaurant-menu-accordion" class="menu-accordion">
+                                            <!-- Dynamic accordion menu items -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Lodging, Transport, Weather & Packing -->
+                    <div id="tab-logistics" class="tab-content">
+                        <div class="split-view">
+                            <div class="view-left">
+                                <div class="glass-card mb-4">
+                                    <h3 data-i18n="logistics.lodging">Opções de Hospedagem</h3>
+                                    <div id="lodging-list" class="lodging-grid">
+                                        <!-- Dynamic lodging items -->
+                                    </div>
+                                </div>
+                                <div class="glass-card">
+                                    <h3 data-i18n="logistics.transit">Transporte &amp; Deslocamento</h3>
+                                    <!-- Reference links row -->
+                                    <div id="transit-ref-links" class="transit-ref-links" style="display:none;">
+                                        <span class="transit-ref-label"><i data-lucide="external-link" style="width:13px;height:13px;"></i> <span data-i18n="logistics.references">Referências:</span></span>
+                                        <a id="transit-link-gmaps" href="#" target="_blank" rel="noopener noreferrer" class="transit-ref-btn">
+                                            <i data-lucide="map" style="width:12px;height:12px;"></i> Google Maps
+                                        </a>
+                                        <a id="transit-link-rome2rio" href="#" target="_blank" rel="noopener noreferrer" class="transit-ref-btn">
+                                            <i data-lucide="globe" style="width:12px;height:12px;"></i> rome2rio
+                                        </a>
+                                    </div>
+                                    <div id="transit-list" class="transit-list">
+                                        <!-- Dynamic transit options -->
+                                    </div>
+                                </div>
+                                <div class="glass-card mt-4 sources-card" id="logistics-sources-panel" style="display: none;">
+                                    <h4 style="display: flex; align-items: center; gap: 8px; font-size: 1rem; margin-bottom: 12px; color: var(--text-primary);">
+                                        <i data-lucide="link" style="width: 16px; height: 16px;"></i>
+                                        <span data-i18n="sources.title">Fontes de Informação</span>
+                                    </h4>
+                                    <ul id="logistics-sources-list" class="sources-list-ul" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Dynamic links -->
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="view-right">
+                                <!-- STATE 1: Weather & Packing (Default) -->
+                                <div class="glass-card mb-4" id="logistics-weather-panel">
+                                    <h3 data-i18n="logistics.weather">Previsão do Tempo no Destino</h3>
+                                    <div id="weather-forecast-row" class="weather-row">
+                                        <!-- Dynamic weather cards -->
+                                    </div>
+                                </div>
+                                <div class="glass-card packing-card" id="logistics-packing-panel">
+                                    <h3 data-i18n="logistics.packing">Análise de Vestuário &amp; Malas</h3>
+                                    <p id="clothing-suggestions-p" class="suggestions-text">-</p>
+                                    <h4 class="mt-4" data-i18n="logistics.checklist">Checklist de Malas (Clique para embalar)</h4>
+                                    <ul id="packing-checklist-list" class="packing-text-list mt-3">
+                                        <!-- Dynamic packing items - text-only, no images -->
+                                    </ul>
+                                </div>
+
+                                <!-- STATE 2: Hotel Details (Hidden by default) -->
+                                <div class="glass-card mb-4" id="logistics-hotel-detail-panel" style="display: none;">
+                                    <div class="panel-header-row mb-3">
+                                        <h3 id="hotel-detail-name" data-i18n="logistics.hotelName">Nome da Hospedagem</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultLogisticsView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="logistics.backToWeather">Ver Clima</span>
+                                        </button>
+                                    </div>
+                                    <div class="hotel-detail-header-layout">
+                                        <div class="hotel-detail-text">
+                                            <div class="lodging-meta mb-2">
+                                                <span class="lodging-rating" id="hotel-detail-rating"><i data-lucide="star" class="icon-small"></i> -</span>
+                                                <span class="lodging-price" id="hotel-detail-price">-</span>
+                                            </div>
+                                            <p id="hotel-detail-description" class="suggestions-text">-</p>
+                                            <div id="hotel-detail-url-container" style="margin-top: 14px; display: none;">
+                                                <a id="hotel-detail-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary-glow btn-small" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; width: fit-content; font-size: 0.85rem; padding: 6px 12px;">
+                                                    <i data-lucide="external-link" style="width: 14px; height: 14px;"></i> <span>Visitar Website / Reservar</span>
+                                                </a>
+                                            </div>
+
+                                            <h5 class="mt-3 mb-2" data-i18n="logistics.amenities">Serviços e Dependências</h5>
+                                            <div id="hotel-detail-amenities" class="dietary-tags-row">
+                                                <!-- Dynamic amenities badges -->
+                                            </div>
+                                        </div>
+                                        <div class="dish-detail-image-card">
+                                            <img id="hotel-detail-photo" src="/static/image-placeholder.svg" alt="Imagem verificada não disponível">
+                                            <a id="hotel-detail-photo-attribution" class="media-attribution" hidden></a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom Panel: Hotel Map & Room Options -->
+                                <div class="glass-card" id="logistics-hotel-map-panel" style="display: none;">
+                                    <div class="panel-header-row mb-3">
+                                        <h3 data-i18n="logistics.hotelLocation">Localização &amp; Acomodações</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultLogisticsView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="logistics.backToWeather">Ver Clima</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="hotel-bottom-layout">
+                                        <div class="hotel-rooms-section">
+                                            <h5 data-i18n="logistics.roomTypes">Tipos de Quarto Disponíveis</h5>
+                                            <ul id="hotel-detail-rooms" class="list-bullet mt-2">
+                                                <!-- Dynamic rooms -->
+                                            </ul>
+                                        </div>
+                                        <div class="map-card mt-3" style="height: 220px; overflow: hidden; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                                            <div id="hotel-map"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 4: Sightseeing, Local Events & Daily Agenda -->
+                    <div id="tab-agenda" class="tab-content">
+                        <div class="split-view">
+                            <div class="view-left">
+                                <div class="glass-card mb-4">
+                                    <h3 data-i18n="agenda.sightseeing">Atrações Turísticas Sugeridas</h3>
+                                    <div id="sightseeing-list" class="sightseeing-grid">
+                                        <!-- Dynamic attractions -->
+                                    </div>
+                                </div>
+
+                                <div class="glass-card events-card-special">
+                                    <div class="events-special-header">
+                                        <i data-lucide="ticket" class="header-icon"></i>
+                                        <h3 data-i18n="agenda.events">Eventos Locais nas Datas</h3>
+                                    </div>
+                                    <div id="events-list" class="events-list">
+                                        <!-- Dynamic event items -->
+                                    </div>
+                                </div>
+                                <div class="glass-card mt-4 sources-card" id="agenda-sources-panel" style="display: none;">
+                                    <h4 style="display: flex; align-items: center; gap: 8px; font-size: 1rem; margin-bottom: 12px; color: var(--text-primary);">
+                                        <i data-lucide="link" style="width: 16px; height: 16px;"></i>
+                                        <span data-i18n="sources.title">Fontes de Informação</span>
+                                    </h4>
+                                    <ul id="agenda-sources-list" class="sources-list-ul" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Dynamic links -->
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="view-right">
+                                <!-- STATE 1: Timeline & Checklist (Default) -->
+                                <div class="glass-card agenda-timeline-card" id="agenda-timeline-panel">
+                                    <h3 data-i18n="agenda.dailyAgenda">Agenda Diária Recomendada</h3>
+                                    <div id="daily-agenda-timeline" class="agenda-timeline">
+                                        <!-- Dynamic timeline events -->
+                                    </div>
+                                </div>
+
+                                <div class="glass-card mt-4 checklist-card" id="agenda-checklist-panel">
+                                    <h3 data-i18n="agenda.checklist">Checklist da Viagem</h3>
+                                    <ul id="travel-checklist-ul" class="travel-checklist">
+                                        <!-- Dynamic travel checklist -->
+                                    </ul>
+                                </div>
+
+                                <!-- STATE 2: Activity/Event Details (Hidden by default) -->
+                                <div class="glass-card mb-4" id="agenda-detail-panel" style="display: none;">
+                                    <div class="panel-header-row mb-3">
+                                        <h3 id="agenda-item-name" data-i18n="agenda.attractionName">Nome da Atração</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultAgendaView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="agenda.backToAgenda">Ver Agenda</span>
+                                        </button>
+                                    </div>
+                                    <div class="hotel-detail-header-layout">
+                                        <div class="hotel-detail-text">
+                                            <div class="lodging-meta mb-2">
+                                                <span class="lodging-rating" id="agenda-item-badge"><i data-lucide="compass" class="icon-small"></i> -</span>
+                                            </div>
+                                            <p id="agenda-item-description" class="suggestions-text">-</p>
+                                            <div id="agenda-item-url-container" style="margin-top: 14px; display: none;">
+                                                <a id="agenda-item-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary-glow btn-small" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; width: fit-content; font-size: 0.85rem; padding: 6px 12px;">
+                                                    <i data-lucide="external-link" style="width: 14px; height: 14px;"></i> <span>Mais Informações / Ingressos</span>
+                                                </a>
+                                            </div>
+
+                                            <h5 class="mt-3 mb-2" id="agenda-practical-title" data-i18n="agenda.practical">Informações Práticas</h5>
+                                            <div id="agenda-item-practical" class="dietary-tags-row">
+                                                <!-- Dynamic practical badges (cost, best time, venue) -->
+                                            </div>
+                                        </div>
+                                        <div class="dish-detail-image-card">
+                                            <img id="agenda-item-photo" src="/static/image-placeholder.svg" alt="Imagem verificada não disponível">
+                                            <a id="agenda-item-photo-attribution" class="media-attribution" hidden></a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom Panel: Attraction/Event Map -->
+                                <div class="glass-card" id="agenda-map-panel" style="display: none;">
+                                    <div class="panel-header-row mb-3">
+                                        <h3 data-i18n="agenda.mapLocation">Localização no Mapa</h3>
+                                        <button class="btn-secondary btn-small" onclick="showDefaultAgendaView()">
+                                            <i data-lucide="arrow-left"></i> <span data-i18n="agenda.backToAgenda">Ver Agenda</span>
+                                        </button>
+                                    </div>
+                                    <div class="map-card" style="height: 250px; overflow: hidden; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                                        <div id="agenda-map"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 5: Agent Traces (Technical Log) -->
+                    <div id="tab-traces" class="tab-content">
+                        <div class="glass-card trace-container">
+                            <div class="trace-intro">
+                                <h3 data-i18n="traces.title">Logs de Execução da IA (Multi-Agent Audit Trail)</h3>
+                                <p data-i18n="traces.desc">Este painel mostra a rastreabilidade técnica do sistema agêntico. Veja abaixo as decisões e pensamentos estruturados emitidos por cada sub-agente durante a orquestração paralela no Google AI Studio.</p>
+                            </div>
+                            <div id="agent-raw-logs-list" class="trace-logs-list">
+                                <!-- Dynamic list of trace cards -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
         </main>
     </div>
+
+    <!-- Google Maps JS SDK Script -->
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}" async defer></script>
+    <script>window.GOOGLE_MAPS_API_KEY = "{{ google_maps_key }}";</script>
+
+    <!-- Lucide Icons Library -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Core Application Script -->
+    <script src="/static/media.js"></script>
+    <script src="/static/api.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

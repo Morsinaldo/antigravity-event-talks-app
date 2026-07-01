@@ -1,0 +1,23 @@
+<!--
+ Copyright (c) 2026 MyCompany LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title description">
+  <title id="title">Imagem não disponível</title>
+  <description id="description">Placeholder neutro para conteúdo sem mídia verificada.</description>
+  <rect width="800" height="500" fill="#151d30"/>
+  <path d="M235 355 340 235l70 80 55-55 100 95H235Z" fill="#334155"/>
+  <circle cx="515" cy="175" r="38" fill="#475569"/>
+  <text x="400" y="420" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="24">Imagem verificada não disponível</text>
+</svg>
