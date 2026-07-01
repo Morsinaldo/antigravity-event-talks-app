@@ -24,9 +24,13 @@ from bs4 import BeautifulSoup
 import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field, model_validator
+from dotenv import load_dotenv
 
 from trip_planner.models import MediaAsset, StrictModel
 from trip_planner.security import is_allowed_url
+
+# Load environment variables (such as PLACES_API_KEY) in this subprocess
+load_dotenv()
 
 OPEN_METEO_GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
 OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
@@ -106,12 +110,13 @@ async def _request_json(
 async def fetch_destination_weather(
     tool_input: WeatherToolInput, client: httpx.AsyncClient | None = None
 ) -> WeatherToolOutput:
-    """Resolve coordinates and return a bounded daily forecast."""
-
+    """Resolve coordinates and return a daily weather summary."""
     try:
+        # Sanitize query by extracting city name before any comma to avoid geocoding failure
+        clean_name = tool_input.destination.split(',')[0].strip()
         geocoding = await _request_json(
             OPEN_METEO_GEOCODING,
-            {"name": tool_input.destination, "count": 1, "language": "pt", "format": "json"},
+            {"name": clean_name, "count": 1, "language": "pt", "format": "json"},
             client,
         )
         results = geocoding.get("results")

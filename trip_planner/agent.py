@@ -30,7 +30,7 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from google.genai import types
 from mcp import StdioServerParameters
 
-from trip_planner.logging_config import audit_event, configure_logging
+from trip_planner.logging_config import audit_event, configure_logging, correlation_id
 from trip_planner.models import (
     CuisineAgentOutput,
     EventsAgentOutput,
@@ -336,6 +336,30 @@ async def _before_tool(
         tool_context.state[count_key] = search_count + 1
     tool_context.state[f"temp:tool_started:{tool.name}"] = time.monotonic()
     audit_event(AUDIT_LOGGER, "tool.started", component="adk", tool=tool.name)
+
+    agent_name = getattr(tool_context, "agent_name", "unknown")
+    tool_name = tool.name
+    req_id = correlation_id.get("default")
+    if req_id and req_id != "unassigned":
+        from trip_planner.logging_config import add_realtime_log
+        task_desc = "Processando..."
+        if tool_name == "search_web":
+            query = args.get("query", "")
+            task_desc = f"Pesquisando na web por '{query}'"
+        elif tool_name == "search_google_places":
+            query = args.get("query", "")
+            task_desc = f"Buscando detalhes de '{query}' no Google Places"
+        elif tool_name == "get_destination_weather":
+            dest = args.get("destination", "")
+            task_desc = f"Consultando previsão de clima para '{dest}'"
+        elif tool_name == "search_commons_media":
+            query = args.get("query", "")
+            task_desc = f"Buscando imagens livres de '{query}' no Wikimedia Commons"
+
+        skill_name = f"mcp:{tool_name}"
+        msg = f"[{agent_name}] -> [{skill_name}] -> {task_desc}"
+        add_realtime_log(req_id, agent_name, "thinking", msg)
+
     return None
 
 
@@ -355,6 +379,18 @@ async def _after_tool(
         duration_ms=duration_ms,
         outcome="success",
     )
+
+    agent_name = getattr(tool_context, "agent_name", "unknown")
+    req_id = correlation_id.get("default")
+    if req_id and req_id != "unassigned":
+        from trip_planner.logging_config import add_realtime_log
+        status_text = "concluído"
+        if isinstance(tool_response, dict) and tool_response.get("status") == "unavailable":
+            status_text = f"indisponível ({tool_response.get('reason', 'desconhecido')})"
+
+        msg = f"[{agent_name}] -> [mcp:{tool.name}] -> Chamada concluída em {duration_ms}ms (Status: {status_text})"
+        add_realtime_log(req_id, agent_name, "thinking", msg)
+
     return None
 
 
@@ -402,6 +438,11 @@ location_agent = _structured_agent(
     tools=[_mcp_toolset(["search_web", "search_google_places"])],
     instruction="""
 Read the JSON travel request.
+SEARCH CONSTRAINTS:
+- Before executing any search_web query, plan your search query precisely and ensure you know exactly what information you need.
+- Do at most 1 search_web query in total. NEVER exceed 3 searches under any circumstances.
+- Only search for information that is strictly necessary for travel routing.
+
 You MUST follow this exact sequence to build geographically accurate route nodes and map center:
 1. Search the web using search_web only to find the routing details (ordered route nodes/cities along the way, total distance, and total driving duration).
 2. For each route node (including the origin, destination, intermediate stop cities, and the map center), call search_google_places with a query specifying the city/place and its region/state (e.g., "São Miguel do Gostoso, RN") to resolve its official name, coordinates (lat, lng), and a description.
@@ -443,6 +484,12 @@ logistics_agent = _structured_agent(
     tools=[_mcp_toolset(["search_web", "search_google_places"])],
     instruction="""
 Read the JSON travel request.
+SEARCH CONSTRAINTS:
+- Before executing any search_web query, plan your search query precisely and ensure you know exactly what lodging and transport information you need.
+- Do at most 1 search_web query in total. NEVER exceed 3 searches under any circumstances.
+- Do NOT use Wikipedia to search for lodging/hotel names. Use specialized booking sites or travel resources instead.
+- Only search for information that is strictly necessary for lodging and transport suggestions.
+
 You MUST search the web using search_web to find actual, real, existing lodging (hotels, hostels) and transport options (trains, buses, flight routes, car rentals) that are suitable for the destination, budget, and route.
 For each suggested lodging/hotel:
 1. Call search_google_places with a query that includes BOTH the lodging name and the destination city (e.g., "[Hotel Name], [Destination City]") to resolve its official name, coordinates (lat, lng), website URL, user rating, and editorial description.
@@ -467,6 +514,12 @@ cuisine_agent = _structured_agent(
     tools=[_mcp_toolset(["search_web", "search_google_places"])],
     instruction="""
 Read the JSON travel request.
+SEARCH CONSTRAINTS:
+- Before executing any search_web query, plan your search query precisely and ensure you know exactly what food and restaurant information you need.
+- Do at most 1 search_web query in total. NEVER exceed 3 searches under any circumstances.
+- Do NOT use Wikipedia to search for typical dishes or restaurant recommendations. Use culinary guides, local food blogs, or specialized travel reviews instead.
+- Only search for information that is strictly necessary for typical dishes and restaurant recommendations.
+
 You MUST search the web using search_web to find only typical regional dishes names and actual, real, highly-rated restaurants in the destination.
 For each restaurant:
 1. Call search_google_places with a query that includes BOTH the restaurant name and the destination city (e.g., "[Restaurant Name], [Destination City]") to resolve its official name, coordinates (lat, lng), website URL, user rating, and description.
@@ -491,6 +544,11 @@ events_agent = _structured_agent(
     tools=[_mcp_toolset(["search_web", "search_google_places"])],
     instruction="""
 Read the JSON travel request.
+SEARCH CONSTRAINTS:
+- Before executing any search_web query, plan your search query precisely and ensure you know exactly what attractions and events information you need.
+- Do at most 1 search_web query in total. NEVER exceed 3 searches under any circumstances.
+- Only search for information that is strictly necessary for events and attraction recommendations.
+
 You MUST search the web using search_web to find real, existing tourist attractions, sightseeing spots, and local events (concerts, festivals, exhibitions, sports events) happening at the destination during the specified travel dates.
 For each sightseeing spot and local event:
 1. Call search_google_places with a query that includes BOTH the spot/event name and the destination city (e.g., "[Spot Name], [Destination City]") to resolve its official name, coordinates (lat, lng), website URL, user rating, and description.
@@ -550,6 +608,11 @@ Use search_commons_media to find at most one image for each important named
 entity in the state below. Select only the two highest-value entities and
 make at most 2 search_commons_media calls total. Issue those calls together
 when possible. Never retry a failed or irrelevant search.
+
+SEARCH CONSTRAINTS:
+- Before executing any search_commons_media query, plan your query precisely and ensure you know exactly what entity you are looking for.
+- Do at most 2 search_commons_media calls total. NEVER exceed 3 calls under any circumstances.
+- Do NOT search for Wikipedia articles, only search for attributable media files in Wikimedia Commons.
 
 ONLY search for:
 - Dishes/food under `cuisine_result` (`typical_dishes`)
