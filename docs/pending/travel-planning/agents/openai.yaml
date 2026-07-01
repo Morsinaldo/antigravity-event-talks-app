@@ -1,0 +1,6 @@
+interface:
+  display_name: "Travel Planning"
+  short_description: "Grounded and safe travel-planning rules"
+  default_prompt: "Use $travel-planning to create a grounded, safe travel plan."
+policy:
+  allow_implicit_invocation: true

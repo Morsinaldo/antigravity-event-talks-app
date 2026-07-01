@@ -35,8 +35,8 @@ server communication error.
 
 Define two explicit model roles:
 
-- Light model: `gemini-2.5-flash-lite`.
-- Control model: `gemini-3.1-flash-lite`.
+- Light model: `gemini-3.1-flash-lite`.
+- Control model: `gemini-3.5-flash`.
 
 Use the light model for the location, weather, logistics, cuisine, events, and
 weather-formatting agents. This group is expected to perform approximately
@@ -45,6 +45,16 @@ seven generation requests for one itinerary, including the weather tool turn.
 Use the control model for the coordinator, media enrichment agent, and final
 aggregator. This group is expected to perform approximately four generation
 requests, including the media tool turn.
+
+The media agent may select at most three high-value entities, must issue no
+more than three Wikimedia searches total, and must not retry an unavailable
+result. A tool callback enforces the same ceiling even if the model ignores the
+instruction. This bounds the model/tool loop below the per-model request limit.
+
+`gemini-2.5-flash-lite` is not used because live verification showed a free
+daily limit of 20 requests for the active project and that quota was already
+exhausted. Both selected models accepted a live request with the current
+project key.
 
 Both model IDs should have environment-variable overrides with the stable IDs
 above as defaults. Model construction must receive the selected role explicitly
@@ -86,10 +96,13 @@ remain classified as local communication failures.
 3. Independent specialists run in parallel on the light model.
 4. Weather formatting runs on the light model.
 5. Media enrichment runs on the control model and calls the constrained MCP
-   media tool.
+   media tool no more than three times.
 6. The aggregator runs on the control model and validates the final schema.
 7. The service persists the validated result and returns JSON to the browser.
 8. Nested quota failures at any stage are normalized to `QUOTA_EXHAUSTED`.
+
+Downstream instructions use ADK optional state placeholders so that an absent
+parallel specialist result yields a partial itinerary rather than a `KeyError`.
 
 ## Verification
 

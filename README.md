@@ -1,71 +1,76 @@
-# BigQuery Release Notes Hub & Twitter Composer
+# TripOrchestrator
 
-A high-fidelity dashboard built with **Python Flask** and **plain vanilla HTML, CSS, and JavaScript**. It retrieves Google Cloud's official BigQuery Release Notes feed, structures the entries into interactive standalone cards, and enables one-click sharing to Twitter / X via a composer with live post previews.
+Local travel planner built with Google Agent Development Kit (ADK), a constrained
+MCP server, Flask, SQLite, and a vanilla JavaScript interface.
 
----
+## Project Requirements Covered
 
-## ✨ Features
+- **ADK multi-agent system:** coordinator plus location, weather, logistics,
+  cuisine, and events specialists; independent specialists run concurrently.
+- **MCP server:** typed tools ground weather in Open-Meteo and images in
+  Wikimedia Commons.
+- **Agent customization:** `.agents/CONTEXT.md` defines secure paved roads and
+  `.agents/skills/` contains reusable project skills.
+- **Security:** strict Pydantic boundaries, fixed tool surface, URL allowlists,
+  safe DOM rendering, request limits, sanitized errors/logs, and STRIDE modeling.
 
-- **Granular Update Parsing:** Automatically decomposes bulk daily updates into individual, color-coded cards corresponding to their category (Features, Issues, Deprecations, and Fixes).
-- **Server-Side Cache:** Implements a 5-minute caching mechanism for the XML feed to guarantee high speeds and avoid rate-limiting.
-- **Dynamic Timeline Filters:** Supports instant client-side searching and category pill filtering (e.g. view only Features or Issues).
-- **Interactive Composer:** Select any card to immediately populate the Twitter/X Composer with custom text. Offers character limit warnings and tag helpers.
-- **Live Mock Post Preview:** Provides a live card that replicates the look of an actual X post, complete with blue highlighted hashtags/links, verification badges, and automatic timestamps.
-- **Vanilla Design Tokens:** Dark-themed responsive layout with smooth CSS transitions, animations, and vector graphics (`static/bq-logo.svg`).
+## Architecture
 
----
+`app.py` validates the browser request and calls `trip_planner/service.py`. The
+service executes the ADK graph in `trip_planner/agent.py`; weather and media
+agents use `trip_planner/mcp_server.py`. The final typed result is stored by
+`database.py`. The browser displays only backend-provided Wikimedia media with
+source attribution, or a local placeholder.
 
-## 📂 File Directory
+## Local Setup
 
-- **[`app.py`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/app.py):** Main Flask application server handling caching, routing, XML feed reading, and BS4 CDATA content split-parsing.
-- **[`templates/index.html`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/templates/index.html):** Core HTML5 layout with sidebar, toolbar, timeline, and composer components.
-- **[`static/style.css`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/static/style.css):** Premium responsive stylesheet containing colors, variables, animations, and elements styling.
-- **[`static/app.js`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/static/app.js):** Client-side ES6 state coordination, SVG character ring offset calculations, filters, and intent triggers.
-- **[`static/bq-logo.svg`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/static/bq-logo.svg):** Custom vector branding logo.
-- **[`requirements.txt`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/requirements.txt):** Core dependencies (Flask, requests, and beautifulsoup4).
-- **[`.gitignore`](file:///Users/morsinaldo/agy2-projects/agy-cli-projects/.gitignore):** Python/Flask environment ignores.
+Requires Python 3.11–3.13, `uv`, and `agents-cli` 0.5 or newer.
 
----
+```bash
+uv sync
+cp .env.example .env  # if an example is provided, otherwise create .env
+```
 
-## 🚀 Getting Started
+Set one development credential:
 
-### Prerequisites
-Make sure you have **Python 3.8+** installed.
+```text
+GEMINI_API_KEY=your-key
+```
 
-### Setup and Running Instructions
+Start the existing Flask UI:
 
-1. **Activate the Virtual Environment:**
-   ```bash
-   source .venv/bin/activate
-   ```
+```bash
+uv run python app.py
+```
 
-2. **Install Dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Open `http://127.0.0.1:5001`. The MCP process is started by ADK over stdio; it
+does not expose a public network port.
 
-3. **Start the Flask Server:**
-   ```bash
-   python app.py
-   ```
-   *Note: The app is configured to serve on port `5001` to prevent conflicts with default macOS system settings.*
+## Tests and Evaluation
 
-4. **Open in Browser:**
-   Navigate to **`http://127.0.0.1:5001`**.
+```bash
+uv run pytest -q
+node --test tests/frontend/app.test.mjs
+agents-cli lint
+agents-cli run '{"destination":"Fortaleza, CE"}' -v
+agents-cli eval run
+```
 
----
+Pytest covers deterministic code contracts. ADK evals cover nondeterministic
+planning quality, tool use, hallucination, safety, media relevance, and prompt
+injection resistance.
 
-## 📤 Pushing Changes to GitHub
+## Logs
 
-If you make modifications and want to push your local commits to GitHub:
+Structured audit records are written to `logs/travel-planner.jsonl`. Each record
+contains a correlation ID, lifecycle event, component, outcome, optional tool or
+agent, duration, and stable error code. Logs rotate at 2 MB with three backups.
+Credentials, authorization data, prompts, descriptions, raw payloads,
+chain-of-thought, stack traces, and local paths are excluded or redacted.
 
-1. **Stage and Commit:**
-   ```bash
-   git add .
-   git commit -m "Your commit message description"
-   ```
+## Security and Limitations
 
-2. **Push to Main Branch:**
-   ```bash
-   git push origin main
-   ```
+See [threat_model.md](threat_model.md). This is a local prototype without user
+authentication, booking/payment actions, encrypted history, signed logs, or a
+distributed rate limiter. Verify routes, prices, availability, events, dietary
+details, and forecasts before consequential decisions.
