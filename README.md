@@ -30,7 +30,7 @@ First, clone the repository to your local system and navigate to the project dir
 
 ```bash
 git clone https://github.com/morsinaldo/antigravity-event-talks-app.git
-cd agy-cli-projects
+cd aantigravity-event-talks-app
 ```
 
 Next, synchronize the Python environment to install all required dependencies specified in the lockfile:
@@ -47,7 +47,7 @@ To populate this file, you must acquire keys from the respective developer porta
 *   🔑 **PEXELS_API_KEY**: Can be requested by signing up on Pexels (https://www.pexels.com/api/) and accessing the API key generator page.
 *   🔑 **GOOGLE_SEARCH_CX & GOOGLE_SEARCH_KEY**: Can be obtained by creating a Custom Search Engine at Google Programmable Search (https://programmablesearchengine.google.com/) to get the search engine ID (CX), and enabling the "Custom Search API" in the Google Cloud Console library to obtain the API search key.
 
-Configure these keys inside the `.env` file as follows:
+Configure these keys inside the `.env` file as illustrated in `.env.sample`:
 
 ```ini
 # Core API Key for Gemini Models
