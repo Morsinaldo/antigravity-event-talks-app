@@ -58,8 +58,10 @@ import re
 from google.genai.models import AsyncModels
 
 _original_generate_content = AsyncModels.generate_content
+_original_generate_content_stream = AsyncModels.generate_content_stream
 _RATE_LIMIT_LOCK = asyncio.Lock()
-_REQUEST_TIMESTAMPS = []
+_LAST_REQUEST_TIME = 0.0
+_CONCURRENCY_SEMAPHORE = asyncio.Semaphore(1)
 
 def _detect_agent_name(kwargs) -> str:
     instr = ""
@@ -95,6 +97,15 @@ def _detect_agent_name(kwargs) -> str:
 async def _patched_generate_content(self, *args, **kwargs):
     from trip_planner.logging_config import correlation_id, add_realtime_log
 
+    # Redirect gemini-2.5-flash to gemini-3.1-flash-lite to bypass the 20 RPD free tier limit
+    args_list = list(args)
+    if len(args_list) > 0 and args_list[0] == "gemini-2.5-flash":
+        args_list[0] = "gemini-3.1-flash-lite"
+    args = tuple(args_list)
+    
+    if kwargs.get("model") == "gemini-2.5-flash":
+        kwargs["model"] = "gemini-3.1-flash-lite"
+
     model_name = "unknown-model"
     if len(args) > 0:
         model_name = args[0]
@@ -112,49 +123,69 @@ async def _patched_generate_content(self, *args, **kwargs):
             message=f"Processando chamada de modelo LLM ({model_name})..."
         )
 
-    # Rolling window rate limiter (max 14 requests per 60 seconds)
+    # Ensure minimum 4.5 seconds spacing between LLM requests to smoothly respect RPM limits
     async with _RATE_LIMIT_LOCK:
+        global _LAST_REQUEST_TIME
         now = time.monotonic()
-        global _REQUEST_TIMESTAMPS
-        _REQUEST_TIMESTAMPS = [t for t in _REQUEST_TIMESTAMPS if now - t < 60.0]
-        if len(_REQUEST_TIMESTAMPS) >= 14:
-            wait_time = 60.0 - (now - _REQUEST_TIMESTAMPS[0])
-            if wait_time > 0:
-                if req_id and req_id != "unassigned":
-                    add_realtime_log(
-                        req_id,
-                        agent="System Core",
-                        status="warning",
-                        message=f"Rate limit de RPM próximo do limite. Aguardando {wait_time:.2f}s para liberar cota..."
-                    )
-                await asyncio.sleep(wait_time)
-                now = time.monotonic()
-                _REQUEST_TIMESTAMPS = [t for t in _REQUEST_TIMESTAMPS if now - t < 60.0]
-        _REQUEST_TIMESTAMPS.append(now)
+        elapsed = now - _LAST_REQUEST_TIME
+        if elapsed < 4.5:
+            wait_time = 4.5 - elapsed
+            if req_id and req_id != "unassigned":
+                add_realtime_log(
+                    req_id,
+                    agent="System Core",
+                    status="warning",
+                    message=f"Espaçando requisições. Aguardando {wait_time:.2f}s..."
+                )
+            await asyncio.sleep(wait_time)
+        _LAST_REQUEST_TIME = time.monotonic()
+
+    # Detect event loop change and safely recreate client
+    current_loop = asyncio.get_running_loop()
+    raw_client = getattr(self, "_api_client", None)
+    if raw_client:
+        last_loop = getattr(raw_client, "_last_ev_loop", None)
+        if last_loop is None or last_loop != current_loop:
+            if hasattr(raw_client, "_async_httpx_client"):
+                try:
+                    old_client = raw_client._async_httpx_client
+                    if old_client:
+                        if not last_loop or not last_loop.is_closed():
+                            asyncio.create_task(old_client.aclose())
+                except Exception:
+                    pass
+            from google.genai._api_client import AsyncHttpxClient
+            if hasattr(raw_client, "_async_httpx_client_args"):
+                raw_client._async_httpx_client = AsyncHttpxClient(
+                    **raw_client._async_httpx_client_args
+                )
+            raw_client._last_ev_loop = current_loop
+
     attempts = 8
     delay = 5.0
     for attempt in range(attempts):
         try:
             start_time = time.monotonic()
-            try:
-                response = await _original_generate_content(self, *args, **kwargs)
-            except RuntimeError as exc:
-                if "Event loop is closed" in str(exc) and hasattr(self, "api_client"):
-                    api_client = getattr(self.api_client, "_api_client", None)
-                    if api_client and hasattr(api_client, "_async_httpx_client_args"):
-                        try:
-                            await api_client._async_httpx_client.aclose()
-                        except Exception:
-                            pass
-                        from google.genai._api_client import AsyncHttpxClient
-                        api_client._async_httpx_client = AsyncHttpxClient(
-                            **api_client._async_httpx_client_args
-                        )
-                        response = await _original_generate_content(self, *args, **kwargs)
+            async with _CONCURRENCY_SEMAPHORE:
+                try:
+                    response = await _original_generate_content(self, *args, **kwargs)
+                except RuntimeError as exc:
+                    if "Event loop is closed" in str(exc) and hasattr(self, "api_client"):
+                        api_client = getattr(self.api_client, "_api_client", None)
+                        if api_client and hasattr(api_client, "_async_httpx_client_args"):
+                            try:
+                                await api_client._async_httpx_client.aclose()
+                            except Exception:
+                                pass
+                            from google.genai._api_client import AsyncHttpxClient
+                            api_client._async_httpx_client = AsyncHttpxClient(
+                                **api_client._async_httpx_client_args
+                            )
+                            response = await _original_generate_content(self, *args, **kwargs)
+                        else:
+                            raise
                     else:
                         raise
-                else:
-                    raise
             duration_ms = round((time.monotonic() - start_time) * 1000)
 
             prompt_tokens = 0
@@ -226,6 +257,78 @@ async def _patched_generate_content(self, *args, **kwargs):
 
 
 AsyncModels.generate_content = _patched_generate_content
+
+async def _patched_generate_content_stream(self, *args, **kwargs):
+    from trip_planner.logging_config import correlation_id, add_realtime_log
+    
+    # Redirect gemini-2.5-flash to gemini-3.1-flash-lite to bypass the 20 RPD free tier limit
+    args_list = list(args)
+    if len(args_list) > 0 and args_list[0] == "gemini-2.5-flash":
+        args_list[0] = "gemini-3.1-flash-lite"
+    args = tuple(args_list)
+    
+    if kwargs.get("model") == "gemini-2.5-flash":
+        kwargs["model"] = "gemini-3.1-flash-lite"
+
+    current_loop = asyncio.get_running_loop()
+    raw_client = getattr(self, "_api_client", None)
+    if raw_client:
+        last_loop = getattr(raw_client, "_last_ev_loop", None)
+        if last_loop is None or last_loop != current_loop:
+            if hasattr(raw_client, "_async_httpx_client"):
+                try:
+                    old_client = raw_client._async_httpx_client
+                    if old_client:
+                        if not last_loop or not last_loop.is_closed():
+                            asyncio.create_task(old_client.aclose())
+                except Exception:
+                    pass
+            from google.genai._api_client import AsyncHttpxClient
+            if hasattr(raw_client, "_async_httpx_client_args"):
+                raw_client._async_httpx_client = AsyncHttpxClient(
+                    **raw_client._async_httpx_client_args
+                )
+            raw_client._last_ev_loop = current_loop
+
+    model_name = "unknown-model"
+    if len(args) > 0:
+        model_name = args[0]
+    elif "model" in kwargs:
+        model_name = kwargs["model"]
+        
+    detected_agent = _detect_agent_name(kwargs)
+    req_id = correlation_id.get("default")
+    
+    if req_id and req_id != "unassigned":
+        add_realtime_log(
+            req_id,
+            agent=detected_agent,
+            status="thinking",
+            message=f"Processando chamada de modelo LLM Streaming ({model_name})..."
+        )
+        
+    # Ensure minimum 4.5 seconds spacing between LLM requests to smoothly respect RPM limits
+    async with _RATE_LIMIT_LOCK:
+        global _LAST_REQUEST_TIME
+        now = time.monotonic()
+        elapsed = now - _LAST_REQUEST_TIME
+        if elapsed < 4.5:
+            wait_time = 4.5 - elapsed
+            if req_id and req_id != "unassigned":
+                add_realtime_log(
+                    req_id,
+                    agent="System Core",
+                    status="warning",
+                    message=f"Espaçando requisições. Aguardando {wait_time:.2f}s..."
+                )
+            await asyncio.sleep(wait_time)
+        _LAST_REQUEST_TIME = time.monotonic()
+
+    async with _CONCURRENCY_SEMAPHORE:
+        async for chunk in _original_generate_content_stream(self, *args, **kwargs):
+            yield chunk
+
+AsyncModels.generate_content_stream = _patched_generate_content_stream
 MEDIA_SEARCH_LIMIT = 3
 
 TRUST_BOUNDARY = """
@@ -455,6 +558,9 @@ CONSISTENCY RULES (follow strictly to avoid variance between runs):
 - Descriptions must be factual place summaries retrieved from the search_google_places tool when available.
 - For the map_center: you MUST provide a valid 'name' (e.g., a region name or "Centro do Trajeto"), 'lat', 'lng', and 'description'.
 
+CRITICAL RULES FOR SOURCES AND URLS:
+- Absolutely DO NOT include generic, domain-only URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" in the 'sources' list. Instead, include the detailed specific travel page/routing URLs you gathered info from.
+
 To optimize speed and prevent API rate limits, do at most 1 search query in total. Group your search.
 """,
     output_schema=LocationAgentOutput,
@@ -496,7 +602,11 @@ For each suggested lodging/hotel:
 2. Populate the 'media' field of the lodging suggestion using the exact 'photo' object (which is a pre-formed MediaAsset) returned by search_google_places, if available.
 Do NOT invent hotels, transport options, coordinates, websites, ratings, or descriptions. Only suggest real options.
 For each lodging suggestion, provide its official website or booking link in the 'url' field.
-Extract the actual URLs/links of the websites you gathered lodging and transport information from, and put them in the 'sources' list field.
+
+CRITICAL RULES FOR SOURCES AND URLS:
+- You MUST populate all lodging 'url' fields with the specific website URL or booking URL returned by the tools (e.g. search_google_places websiteUri or real URLs from search_web). Never use generic URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" for these.
+- Extract the actual specific URLs/links of the webpages you gathered lodging and transport information from (e.g. TripAdvisor, Booking.com, official hotel website), and put them in the 'sources' list field.
+- Absolutely DO NOT include generic, domain-only URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" in the 'sources' list.
 
 Treat prices and ratings as estimates unless directly grounded, and never imply a booking or live availability.
 
@@ -526,7 +636,11 @@ For each restaurant:
 Do NOT search the web for recipes, ingredients, or history. Rely on your own internal knowledge base to fill out the description, history, ingredients, and recipe steps for the typical dishes once they are identified.
 Every restaurant and typical dish suggested must exist in reality and be backed by the search results.
 For each restaurant suggestion, provide its website, menu page, or online review link in the 'url' field.
-Extract the actual URLs/links of the websites you gathered typical dishes or restaurant recommendations from, and put them in the 'sources' list field.
+
+CRITICAL RULES FOR SOURCES AND URLS:
+- You MUST populate all restaurant 'url' fields with the specific website URL or review URL returned by the tools (e.g. search_google_places websiteUri or real URLs from search_web). Never use generic URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" for these.
+- Extract the actual specific URLs/links of the webpages you gathered typical dishes or restaurant recommendations from (e.g. TripAdvisor, local food blogs, official restaurant website), and put them in the 'sources' list field.
+- Absolutely DO NOT include generic, domain-only URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" in the 'sources' list.
 
 Respect dietary restrictions strictly (if provided), describe regional dishes, suggest restaurants without claiming live availability, and exclude already-owned ingredients (fridge_items) from the shopping list when provided.
 
@@ -555,7 +669,11 @@ For each sightseeing spot and local event:
 2. Populate the 'media' field of the sightseeing spot or event using the exact 'photo' object (which is a pre-formed MediaAsset) returned by search_google_places, if available.
 Do NOT invent any attractions or local events. Every single sightseeing spot and event must be real and verified.
 For each sightseeing spot and local event suggestion, provide its official info page, Wikipedia page, or ticket booking link in the 'url' field.
-Extract the actual URLs/links of the websites you found the sightseeing spots or events from, and put them in the 'sources' list field.
+
+CRITICAL RULES FOR SOURCES AND URLS:
+- You MUST populate all sightseeing and event 'url' fields with the specific website URL, info page, or ticket booking URL returned by the tools (e.g. search_google_places websiteUri or real URLs from search_web). Never use generic URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" for these.
+- Extract the actual specific URLs/links of the webpages you gathered sightseeing spot and event information from, and put them in the 'sources' list field.
+- Absolutely DO NOT include generic, domain-only URLs like "https://www.google.com", "https://www.bing.com", or "https://www.wikipedia.org" in the 'sources' list.
 
 IMPORTANT: The field "available_hours" indicates the user's time availability
 for visiting places each day. Respect this strictly when building daily_agenda:
@@ -625,13 +743,12 @@ Do NOT search for entities (hotels, attractions, events) that ALREADY have their
 
 SEARCH QUERY RULES (critical for finding relevant images):
 - CRITICAL: Use the official resolved names of hotels, attractions, and locations from the input state to construct your search queries.
-- For dishes/food: use "[dish name] [destination region] traditional food" in English.
-  Example: "tapioca Natal Brazil traditional food", "carne de sol Nordeste Brazil dish".
+- For dishes/food: query ONLY the core name of the dish (e.g., "tapioca", "carne de sol", "moqueca") or with a generic regional suffix (e.g., "moqueca Brazil", "carne de sol dish"). NEVER include the specific destination city name in the dish search query to avoid empty search results.
 - For lodging/hotels: use "[hotel name] [city] Brazil architecture exterior".
   Example: "Pousada Mi Secreto Sao Miguel do Gostoso Brazil".
 - For events/attractions/sightseeing: use "[attraction name] [city] Brazil tourism".
   Example: "Pelourinho Salvador Brazil tourism".
-- Do NOT use Portuguese query text — Wikimedia Commons indexes better with English queries.
+- Do NOT use Portuguese query text — Wikimedia Commons indexes better with English queries, except for typical dish names which must be searched by their common Portuguese name (e.g., "carne de sol", "tapioca", "moqueca").
 - Do NOT reuse one image for unrelated entities.
 
 Return a compact JSON object mapping at most two stable keys to complete tool results;

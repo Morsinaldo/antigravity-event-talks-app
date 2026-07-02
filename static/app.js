@@ -356,8 +356,8 @@ function showScreen(screenId) {
     const target = document.getElementById(screenId);
     if (target) target.classList.add('active');
 
-    if (screenId === 'results-screen' && mapInstance) {
-        setTimeout(() => mapInstance.invalidateSize(), 100);
+    if (screenId === 'results-screen' && mapInstance && typeof google !== 'undefined') {
+        setTimeout(() => google.maps.event.trigger(mapInstance, 'resize'), 100);
     }
 }
 
@@ -371,8 +371,8 @@ function setupTabs() {
             const tabId = link.getAttribute('data-tab');
             const targetTab = document.getElementById(tabId);
             if (targetTab) targetTab.classList.add('active');
-            if (tabId === 'tab-map' && mapInstance) {
-                setTimeout(() => mapInstance.invalidateSize(), 100);
+            if (tabId === 'tab-map' && mapInstance && typeof google !== 'undefined') {
+                setTimeout(() => google.maps.event.trigger(mapInstance, 'resize'), 100);
             }
         });
     });
@@ -1588,7 +1588,7 @@ window.showRestaurantMapAndMenu = function(rest) {
     }
     lucide.createIcons();
 
-    if (restaurantMapInstance) { restaurantMapInstance.remove(); restaurantMapInstance = null; }
+    if (restaurantMapInstance) { restaurantMapInstance = null; }
 
     const mapContainer = document.getElementById('restaurant-map');
     if (!mapContainer) return;
@@ -1600,15 +1600,33 @@ window.showRestaurantMapAndMenu = function(rest) {
     }
 
     try {
-        restaurantMapInstance = L.map('restaurant-map').setView([rest.lat, rest.lng], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
-        }).addTo(restaurantMapInstance);
-        L.divIcon({ html: `<div style="width:14px;height:14px;background:#F59E0B;border:2px solid #151D30;border-radius:50%;box-shadow:0 0 8px rgba(245,158,11,0.6);"></div>`, className: 'custom-div-icon', iconSize: [14, 14], iconAnchor: [7, 7] });
-        L.marker([rest.lat, rest.lng], { icon: L.divIcon({ html: `<div style="width:14px;height:14px;background:#F59E0B;border:2px solid #151D30;border-radius:50%;box-shadow:0 0 8px rgba(245,158,11,0.6);"></div>`, className: 'custom-div-icon', iconSize: [14, 14], iconAnchor: [7, 7] }) })
-            .bindPopup(`<strong>${escapeHtml(rest.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(rest.description)}</span>`)
-            .addTo(restaurantMapInstance).openPopup();
-        setTimeout(() => restaurantMapInstance && restaurantMapInstance.invalidateSize(), 100);
+        if (typeof google === 'undefined' || !google.maps) {
+            mapContainer.innerHTML = `<div style="padding:20px;text-align:center;color:white;">Google Maps API não carregada.</div>`;
+            return;
+        }
+        restaurantMapInstance = new google.maps.Map(mapContainer, {
+            center: { lat: parseFloat(rest.lat), lng: parseFloat(rest.lng) },
+            zoom: 15,
+            disableDefaultUI: true
+        });
+        const marker = new google.maps.Marker({
+            position: { lat: parseFloat(rest.lat), lng: parseFloat(rest.lng) },
+            map: restaurantMapInstance,
+            title: rest.name,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: '#F59E0B',
+                fillOpacity: 1,
+                strokeColor: '#151D30',
+                strokeWeight: 2
+            }
+        });
+        const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>${escapeHtml(rest.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(rest.description)}</span>`
+        });
+        infoWindow.open(restaurantMapInstance, marker);
+        marker.addListener('click', () => infoWindow.open(restaurantMapInstance, marker));
     } catch (e) { console.error("Failed to render restaurant map:", e); }
 };
 
@@ -1743,22 +1761,43 @@ window.showHotelDetails = function(hotel) {
 
     lucide.createIcons();
 
-    if (hotelMapInstance) { hotelMapInstance.remove(); hotelMapInstance = null; }
+    if (hotelMapInstance) { hotelMapInstance = null; }
 
+    const mapContainer = document.getElementById('hotel-map');
     if (!hotel.lat || !hotel.lng || isNaN(hotel.lat) || isNaN(hotel.lng)) {
-        const mapContainer = document.getElementById('hotel-map');
         if (mapContainer) mapContainer.innerHTML = `<div class="suggestions-text" style="padding:40px 20px;text-align:center;">${t('logistics.noCoords')}</div>`;
         lucide.createIcons();
         return;
     }
 
     try {
-        hotelMapInstance = L.map('hotel-map').setView([hotel.lat, hotel.lng], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19 }).addTo(hotelMapInstance);
-        L.marker([hotel.lat, hotel.lng], { icon: L.divIcon({ html: `<div style="width:14px;height:14px;background:#6366F1;border:2px solid #151D30;border-radius:50%;box-shadow:0 0 8px rgba(99,102,241,0.6);"></div>`, className: 'custom-div-icon', iconSize: [14, 14], iconAnchor: [7, 7] }) })
-            .bindPopup(`<strong>${escapeHtml(hotel.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(hotel.description || '')}</span>`)
-            .addTo(hotelMapInstance).openPopup();
-        setTimeout(() => hotelMapInstance && hotelMapInstance.invalidateSize(), 100);
+        if (typeof google === 'undefined' || !google.maps) {
+            if (mapContainer) mapContainer.innerHTML = `<div style="padding:20px;text-align:center;color:white;">Google Maps API não carregada.</div>`;
+            return;
+        }
+        hotelMapInstance = new google.maps.Map(mapContainer, {
+            center: { lat: parseFloat(hotel.lat), lng: parseFloat(hotel.lng) },
+            zoom: 15,
+            disableDefaultUI: true
+        });
+        const marker = new google.maps.Marker({
+            position: { lat: parseFloat(hotel.lat), lng: parseFloat(hotel.lng) },
+            map: hotelMapInstance,
+            title: hotel.name,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: '#6366F1',
+                fillOpacity: 1,
+                strokeColor: '#151D30',
+                strokeWeight: 2
+            }
+        });
+        const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>${escapeHtml(hotel.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(hotel.description || '')}</span>`
+        });
+        infoWindow.open(hotelMapInstance, marker);
+        marker.addListener('click', () => infoWindow.open(hotelMapInstance, marker));
     } catch (e) { console.error("Failed to render hotel map:", e); }
 };
 
@@ -1774,7 +1813,7 @@ window.showDefaultLogisticsView = function() {
     if (hotelMapPanel) hotelMapPanel.style.display = 'none';
 
     document.querySelectorAll('#lodging-list .lodging-card').forEach(c => c.classList.remove('active'));
-    if (hotelMapInstance) { hotelMapInstance.remove(); hotelMapInstance = null; }
+    if (hotelMapInstance) { hotelMapInstance = null; }
 };
 
 // ----- TRANSIT with reference links -----
@@ -2012,23 +2051,44 @@ window.showActivityDetails = function(act, type) {
 
     lucide.createIcons();
 
-    if (agendaMapInstance) { agendaMapInstance.remove(); agendaMapInstance = null; }
+    if (agendaMapInstance) { agendaMapInstance = null; }
 
+    const mapContainer = document.getElementById('agenda-map');
     if (!act.lat || !act.lng || isNaN(act.lat) || isNaN(act.lng)) {
-        const mapContainer = document.getElementById('agenda-map');
         if (mapContainer) mapContainer.innerHTML = `<div class="suggestions-text" style="padding:40px 20px;text-align:center;">${t('misc.noGeoActivity')}</div>`;
         lucide.createIcons();
         return;
     }
 
     try {
-        agendaMapInstance = L.map('agenda-map').setView([act.lat, act.lng], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19 }).addTo(agendaMapInstance);
+        if (typeof google === 'undefined' || !google.maps) {
+            if (mapContainer) mapContainer.innerHTML = `<div style="padding:20px;text-align:center;color:white;">Google Maps API não carregada.</div>`;
+            return;
+        }
+        agendaMapInstance = new google.maps.Map(mapContainer, {
+            center: { lat: parseFloat(act.lat), lng: parseFloat(act.lng) },
+            zoom: 15,
+            disableDefaultUI: true
+        });
         const color = type === 'spot' ? '#06B6D4' : '#F59E0B';
-        L.marker([act.lat, act.lng], { icon: L.divIcon({ html: `<div style="width:14px;height:14px;background:${color};border:2px solid #151D30;border-radius:50%;box-shadow:0 0 8px ${color}99;"></div>`, className: 'custom-div-icon', iconSize: [14, 14], iconAnchor: [7, 7] }) })
-            .bindPopup(`<strong>${escapeHtml(act.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(act.description || '')}</span>`)
-            .addTo(agendaMapInstance).openPopup();
-        setTimeout(() => agendaMapInstance && agendaMapInstance.invalidateSize(), 100);
+        const marker = new google.maps.Marker({
+            position: { lat: parseFloat(act.lat), lng: parseFloat(act.lng) },
+            map: agendaMapInstance,
+            title: act.name,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: '#151D30',
+                strokeWeight: 2
+            }
+        });
+        const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>${escapeHtml(act.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(act.description || '')}</span>`
+        });
+        infoWindow.open(agendaMapInstance, marker);
+        marker.addListener('click', () => infoWindow.open(agendaMapInstance, marker));
     } catch (e) { console.error("Failed to render agenda map:", e); }
 };
 
@@ -2045,7 +2105,7 @@ window.showDefaultAgendaView = function() {
 
     document.querySelectorAll('#sightseeing-list .sightsee-card').forEach(c => c.classList.remove('active'));
     document.querySelectorAll('#events-list .event-item').forEach(c => c.classList.remove('active'));
-    if (agendaMapInstance) { agendaMapInstance.remove(); agendaMapInstance = null; }
+    if (agendaMapInstance) { agendaMapInstance = null; }
 };
 
 function renderAgenda(agenda) {
@@ -2110,18 +2170,28 @@ function setupLeafletMap(center, nodes) {
     const centerLat = center ? center.lat : -5.7944;
     const centerLng = center ? center.lng : -35.2110;
 
-    mapInstance = L.map('map', { zoomControl: true, fadeAnimation: true }).setView([centerLat, centerLng], 8);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        subdomains: 'abc', maxZoom: 19
-    }).addTo(mapInstance);
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return;
+
+    if (typeof google === 'undefined' || !google.maps) {
+        mapEl.innerHTML = `<div style="padding:20px;text-align:center;color:white;">Google Maps API não carregada. Verifique sua PLACES_API_KEY.</div>`;
+        return;
+    }
+
+    mapInstance = new google.maps.Map(mapEl, {
+        center: { lat: centerLat, lng: centerLng },
+        zoom: 8,
+        disableDefaultUI: false
+    });
 
     if (!nodes || nodes.length === 0) return;
 
     const coordinates = [];
+    const infoWindow = new google.maps.InfoWindow();
+
     nodes.forEach((node, index) => {
         if (!node || node.lat == null || node.lng == null) return;
-        const markerCoords = [node.lat, node.lng];
+        const markerCoords = { lat: parseFloat(node.lat), lng: parseFloat(node.lng) };
         coordinates.push(markerCoords);
 
         let colorClass = 'cyan';
@@ -2129,14 +2199,26 @@ function setupLeafletMap(center, nodes) {
         else if (index === nodes.length - 1) colorClass = 'rose';
 
         const colorHex = colorClass === 'emerald' ? '#10B981' : colorClass === 'rose' ? '#EF4444' : '#06B6D4';
-        const svgIcon = L.divIcon({
-            html: `<div style="width:14px;height:14px;background-color:${colorHex};border:2px solid #151D30;border-radius:50%;box-shadow:0 0 8px ${colorHex}99;"></div>`,
-            className: 'custom-div-icon', iconSize: [14, 14], iconAnchor: [7, 7]
+
+        const marker = new google.maps.Marker({
+            position: markerCoords,
+            map: mapInstance,
+            title: node.name,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: colorHex,
+                fillOpacity: 1,
+                strokeColor: '#151D30',
+                strokeWeight: 2
+            }
         });
 
-        const marker = L.marker(markerCoords, { icon: svgIcon })
-            .bindPopup(`<strong>${escapeHtml(node.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(node.description)}</span>`)
-            .addTo(mapInstance);
+        marker.addListener('click', () => {
+            infoWindow.setContent(`<strong>${escapeHtml(node.name)}</strong><br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(node.description)}</span>`);
+            infoWindow.open(mapInstance, marker);
+        });
+
         mapMarkers.push(marker);
     });
 
@@ -2155,10 +2237,21 @@ function setupLeafletMap(center, nodes) {
                     .then(r => r.json())
                     .then(data => {
                         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-                            if (mapRouteLine) mapRouteLine.remove();
-                            const snappedCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-                            mapRouteLine = L.polyline(snappedCoords, { color: '#6366F1', weight: 4, opacity: 0.8, lineCap: 'round' }).addTo(mapInstance);
-                            mapInstance.fitBounds(mapRouteLine.getBounds(), { padding: [40, 40] });
+                            if (mapRouteLine) mapRouteLine.setMap(null);
+                            const snappedCoords = data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+                            
+                            mapRouteLine = new google.maps.Polyline({
+                                path: snappedCoords,
+                                strokeColor: '#6366F1',
+                                strokeOpacity: 0.8,
+                                strokeWeight: 4,
+                                map: mapInstance
+                            });
+
+                            const bounds = new google.maps.LatLngBounds();
+                            snappedCoords.forEach(coord => bounds.extend(coord));
+                            mapInstance.fitBounds(bounds);
+
                             snapBtn.className = 'btn-snap-active';
                             snapBtn.innerHTML = `<i data-lucide="check"></i> ${t('map.snapped')}`;
                             lucide.createIcons();
@@ -2176,9 +2269,13 @@ function setupLeafletMap(center, nodes) {
                         lucide.createIcons();
                     });
             } else {
-                if (mapRouteLine) mapRouteLine.remove();
+                if (mapRouteLine) mapRouteLine.setMap(null);
                 drawStraightRoute(coordinates);
-                mapInstance.fitBounds(mapRouteLine.getBounds(), { padding: [40, 40] });
+                
+                const bounds = new google.maps.LatLngBounds();
+                coordinates.forEach(coord => bounds.extend(coord));
+                mapInstance.fitBounds(bounds);
+
                 snapBtn.className = 'btn-snap-inactive';
                 snapBtn.innerHTML = `<i data-lucide="navigation"></i> ${t('map.straightLine')}`;
                 lucide.createIcons();
@@ -2188,21 +2285,36 @@ function setupLeafletMap(center, nodes) {
 
     if (coordinates.length > 1) {
         drawStraightRoute(coordinates);
-        mapInstance.fitBounds(mapRouteLine.getBounds(), { padding: [40, 40] });
+        const bounds = new google.maps.LatLngBounds();
+        coordinates.forEach(coord => bounds.extend(coord));
+        mapInstance.fitBounds(bounds);
     }
 }
 
 function drawStraightRoute(coordinates) {
-    mapRouteLine = L.polyline(coordinates, {
-        color: '#6366F1', weight: 4, opacity: 0.8, dashArray: '5, 8', lineCap: 'round'
-    }).addTo(mapInstance);
+    const lineSymbol = {
+        path: 'M 0,-1 0,1',
+        strokeOpacity: 0.8,
+        scale: 3,
+        strokeColor: '#6366F1'
+    };
+    mapRouteLine = new google.maps.Polyline({
+        path: coordinates,
+        strokeOpacity: 0,
+        icons: [{
+            icon: lineSymbol,
+            offset: '0',
+            repeat: '15px'
+        }],
+        map: mapInstance
+    });
 }
 
 function clearMap() {
-    mapMarkers.forEach(m => m.remove());
+    mapMarkers.forEach(m => m.setMap(null));
     mapMarkers = [];
-    if (mapRouteLine) { mapRouteLine.remove(); mapRouteLine = null; }
-    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+    if (mapRouteLine) { mapRouteLine.setMap(null); mapRouteLine = null; }
+    mapInstance = null;
 }
 
 // =============================================================

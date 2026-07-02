@@ -132,12 +132,12 @@ async def fetch_destination_weather(
                 "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code"
             ),
             "timezone": "auto",
-            "forecast_days": 16,
         }
-        if tool_input.start_date:
+        if tool_input.start_date and tool_input.end_date:
             params["start_date"] = tool_input.start_date.isoformat()
-        if tool_input.end_date:
             params["end_date"] = tool_input.end_date.isoformat()
+        else:
+            params["forecast_days"] = 16
         forecast = await _request_json(OPEN_METEO_FORECAST, params, client)
         daily = forecast.get("daily", {})
         days = [

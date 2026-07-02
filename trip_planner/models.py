@@ -128,15 +128,19 @@ class MediaAsset(StrictModel):
         if value.scheme != "https" or value.host not in {
             "upload.wikimedia.org",
             "commons.wikimedia.org",
+            "places.googleapis.com",
         }:
-            raise ValueError("image URL must use an allowlisted Wikimedia host")
+            raise ValueError("image URL must use an allowlisted Wikimedia or Google Places host")
         return value
 
     @field_validator("source_url")
     @classmethod
     def source_url_is_allowlisted(cls, value: HttpUrl) -> HttpUrl:
-        if value.scheme != "https" or value.host != "commons.wikimedia.org":
-            raise ValueError("source URL must use the allowlisted Commons host")
+        if value.scheme != "https" or value.host not in {
+            "commons.wikimedia.org",
+            "places.googleapis.com",
+        }:
+            raise ValueError("source URL must use the allowlisted Commons or Google Places host")
         return value
 
 
