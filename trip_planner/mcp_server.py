@@ -254,6 +254,173 @@ async def search_commons_media(query: str, max_results: int = 1) -> dict[str, An
 
 
 @mcp.tool()
+async def search_google_images(query: str, max_results: int = 1) -> dict[str, Any]:
+    """Search Google Images via Custom Search JSON API for food, places, and travel photos.
+
+    Best used for typical dishes and regional food where Wikimedia Commons has poor coverage.
+    Returns thumbnails hosted on encrypted-tbn0.gstatic.com (Google CDN).
+    """
+    import os
+    import urllib.parse
+
+    api_key = (
+        os.environ.get("GOOGLE_CSE_API_KEY")
+        or os.environ.get("PLACES_API_KEY")
+        or os.environ.get("GOOGLE_PLACES_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+    )
+    cse_id = os.environ.get("GOOGLE_CSE_ID")
+
+    if not api_key:
+        return MediaSearchOutput(status="unavailable", reason="no_api_key_configured").model_dump(mode="json")
+    if not cse_id:
+        return MediaSearchOutput(status="unavailable", reason="no_cse_id_configured").model_dump(mode="json")
+
+    try:
+        validated = MediaSearchInput.model_validate({"query": query, "max_results": max_results})
+        payload = await _request_json(
+            "https://www.googleapis.com/customsearch/v1",
+            {
+                "key": api_key,
+                "cx": cse_id,
+                "q": validated.query,
+                "searchType": "image",
+                "num": min(validated.max_results * 2, 6),
+                "imgType": "photo",
+                "imgSize": "LARGE",
+                "safe": "active",
+            },
+            None,
+        )
+
+        items = payload.get("items", [])
+        if not isinstance(items, list) or not items:
+            return MediaSearchOutput(status="unavailable", reason="no_images_found").model_dump(mode="json")
+
+        # Attribution source: stable Google Images search URL for this query
+        source_url = f"https://www.google.com/search?q={urllib.parse.quote(validated.query)}&tbm=isch"
+
+        assets: list[MediaAsset] = []
+        for item in items:
+            image_info = item.get("image", {})
+            thumb_url = str(image_info.get("thumbnailLink") or "")
+            title = str(item.get("title") or validated.query)[:300]
+            display_link = str(item.get("displayLink") or "Google Images")
+
+            if not is_allowed_url(thumb_url, {"encrypted-tbn0.gstatic.com"}):
+                continue
+            if not is_allowed_url(source_url, {"www.google.com"}):
+                continue
+
+            try:
+                assets.append(
+                    MediaAsset(
+                        url=thumb_url,
+                        source_url=source_url,
+                        attribution=f"{display_link} via Google Images",
+                        alt=title,
+                        query=validated.query,
+                    )
+                )
+            except Exception:
+                continue
+
+            if len(assets) >= validated.max_results:
+                break
+
+        if not assets:
+            return MediaSearchOutput(status="unavailable", reason="no_allowlisted_thumbnails").model_dump(mode="json")
+
+        return MediaSearchOutput(status="ok", assets=assets).model_dump(mode="json")
+
+    except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        return MediaSearchOutput(status="unavailable", reason="google_images_error").model_dump(mode="json")
+
+
+
+async def search_pexels_media_data(
+    tool_input: MediaSearchInput, client: httpx.AsyncClient | None = None
+) -> MediaSearchOutput:
+    """Search Pexels for attributable images and check their safety list."""
+    import os
+    api_key = os.environ.get("PEXELS_API_KEY")
+    if not api_key:
+        return MediaSearchOutput(status="unavailable", reason="no_api_key_configured")
+
+    own_client = client is None
+    active_client = client or httpx.AsyncClient(
+        timeout=httpx.Timeout(8.0),
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json", "Authorization": api_key},
+        follow_redirects=False,
+    )
+    try:
+        response = await active_client.get(
+            "https://api.pexels.com/v1/search",
+            params={"query": tool_input.query, "per_page": min(tool_input.max_results * 2, 6)},
+        )
+        response.raise_for_status()
+        if len(response.content) > MAX_RESPONSE_BYTES:
+            raise ValueError("remote_response_too_large")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("invalid_remote_payload")
+
+        photos = payload.get("photos", [])
+        if not isinstance(photos, list) or not photos:
+            return MediaSearchOutput(status="unavailable", reason="no_media_found")
+
+        assets: list[MediaAsset] = []
+        for photo in photos:
+            if not isinstance(photo, dict):
+                continue
+            src = photo.get("src", {})
+            if not isinstance(src, dict):
+                continue
+            image_url = str(src.get("large") or src.get("medium") or "")
+            source_url = str(photo.get("url") or "")
+            if not is_allowed_url(image_url, {"images.pexels.com"}) or not is_allowed_url(
+                source_url, {"www.pexels.com"}
+            ):
+                continue
+
+            photographer = str(photo.get("photographer") or "Fotógrafo desconhecido")
+            alt = str(photo.get("alt") or tool_input.query)[:300]
+
+            assets.append(
+                MediaAsset(
+                    url=image_url,
+                    source_url=source_url,
+                    attribution=f"{photographer} via Pexels",
+                    alt=alt,
+                    query=tool_input.query,
+                )
+            )
+            if len(assets) >= tool_input.max_results:
+                break
+
+        if not assets:
+            return MediaSearchOutput(status="unavailable", reason="no_allowlisted_media")
+        return MediaSearchOutput(status="ok", assets=assets)
+
+    except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        return MediaSearchOutput(status="unavailable", reason="pexels_error")
+    finally:
+        if own_client:
+            await active_client.aclose()
+
+
+@mcp.tool()
+async def search_pexels_media(query: str, max_results: int = 1) -> dict[str, Any]:
+    """Search Pexels API for high-quality photos of destinations, landmarks, and typical foods.
+
+    Returns clean photo URLs hosted on images.pexels.com.
+    """
+    tool_input = MediaSearchInput.model_validate({"query": query, "max_results": max_results})
+    result = await search_pexels_media_data(tool_input)
+    return result.model_dump(mode="json")
+
+
+@mcp.tool()
 async def search_web(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     """Search the web for up-to-date travel information, attractions, hotels, or restaurants.
 

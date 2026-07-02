@@ -175,7 +175,7 @@ class OrchestrationService:
         dynamic_seq_agents = [coordinator, dynamic_specialists]
         if need_weather:
             dynamic_seq_agents.append(weather_formatter)
-        if any(m in selected for m in ["road_trip", "lodging", "agenda"]):
+        if any(m in selected for m in ["road_trip", "lodging", "cuisine", "agenda"]):
             dynamic_seq_agents.append(media_agent)
         dynamic_seq_agents.append(aggregator)
 

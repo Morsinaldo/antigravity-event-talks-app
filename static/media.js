@@ -18,8 +18,8 @@
     'use strict';
 
     const DEFAULT_MEDIA_URL = '/static/image-placeholder.svg';
-    const IMAGE_HOSTS = new Set(['upload.wikimedia.org', 'commons.wikimedia.org', 'places.googleapis.com']);
-    const SOURCE_HOSTS = new Set(['commons.wikimedia.org', 'places.googleapis.com']);
+    const IMAGE_HOSTS = new Set(['upload.wikimedia.org', 'commons.wikimedia.org', 'places.googleapis.com', 'encrypted-tbn0.gstatic.com', 'images.pexels.com']);
+    const SOURCE_HOSTS = new Set(['commons.wikimedia.org', 'places.googleapis.com', 'www.google.com', 'www.pexels.com']);
 
     function isAllowedUrl(value, allowedHosts) {
         try {

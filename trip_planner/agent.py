@@ -57,11 +57,28 @@ import asyncio
 import re
 from google.genai.models import AsyncModels
 
+import weakref
+
 _original_generate_content = AsyncModels.generate_content
 _original_generate_content_stream = AsyncModels.generate_content_stream
-_RATE_LIMIT_LOCK = asyncio.Lock()
 _LAST_REQUEST_TIME = 0.0
-_CONCURRENCY_SEMAPHORE = asyncio.Semaphore(1)
+
+_LOCKS_BY_LOOP = weakref.WeakKeyDictionary()
+_SEMAPHORES_BY_LOOP = weakref.WeakKeyDictionary()
+
+
+def _get_rate_limit_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    if loop not in _LOCKS_BY_LOOP:
+        _LOCKS_BY_LOOP[loop] = asyncio.Lock()
+    return _LOCKS_BY_LOOP[loop]
+
+
+def _get_concurrency_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if loop not in _SEMAPHORES_BY_LOOP:
+        _SEMAPHORES_BY_LOOP[loop] = asyncio.Semaphore(1)
+    return _SEMAPHORES_BY_LOOP[loop]
 
 def _detect_agent_name(kwargs) -> str:
     instr = ""
@@ -124,7 +141,7 @@ async def _patched_generate_content(self, *args, **kwargs):
         )
 
     # Ensure minimum 4.5 seconds spacing between LLM requests to smoothly respect RPM limits
-    async with _RATE_LIMIT_LOCK:
+    async with _get_rate_limit_lock():
         global _LAST_REQUEST_TIME
         now = time.monotonic()
         elapsed = now - _LAST_REQUEST_TIME
@@ -166,7 +183,7 @@ async def _patched_generate_content(self, *args, **kwargs):
     for attempt in range(attempts):
         try:
             start_time = time.monotonic()
-            async with _CONCURRENCY_SEMAPHORE:
+            async with _get_concurrency_semaphore():
                 try:
                     response = await _original_generate_content(self, *args, **kwargs)
                 except RuntimeError as exc:
@@ -308,7 +325,7 @@ async def _patched_generate_content_stream(self, *args, **kwargs):
         )
         
     # Ensure minimum 4.5 seconds spacing between LLM requests to smoothly respect RPM limits
-    async with _RATE_LIMIT_LOCK:
+    async with _get_rate_limit_lock():
         global _LAST_REQUEST_TIME
         now = time.monotonic()
         elapsed = now - _LAST_REQUEST_TIME
@@ -324,7 +341,7 @@ async def _patched_generate_content_stream(self, *args, **kwargs):
             await asyncio.sleep(wait_time)
         _LAST_REQUEST_TIME = time.monotonic()
 
-    async with _CONCURRENCY_SEMAPHORE:
+    async with _get_concurrency_semaphore():
         async for chunk in _original_generate_content_stream(self, *args, **kwargs):
             yield chunk
 
@@ -420,7 +437,7 @@ def _mcp_toolset(tool_filter: list[str]) -> McpToolset:
 async def _before_tool(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, Any] | None:
-    if tool.name == "search_commons_media":
+    if tool.name in ("search_commons_media", "search_pexels_media", "search_google_images"):
         count_key = "temp:media_search_count"
         search_count = int(tool_context.state.get(count_key, 0))
         if search_count >= MEDIA_SEARCH_LIMIT:
@@ -458,6 +475,9 @@ async def _before_tool(
         elif tool_name == "search_commons_media":
             query = args.get("query", "")
             task_desc = f"Buscando imagens livres de '{query}' no Wikimedia Commons"
+        elif tool_name == "search_pexels_media":
+            query = args.get("query", "")
+            task_desc = f"Buscando belas imagens de '{query}' no Pexels"
 
         skill_name = f"mcp:{tool_name}"
         msg = f"[{agent_name}] -> [{skill_name}] -> {task_desc}"
@@ -635,6 +655,9 @@ For each restaurant:
 1. Call search_google_places with a query that includes BOTH the restaurant name and the destination city (e.g., "[Restaurant Name], [Destination City]") to resolve its official name, coordinates (lat, lng), website URL, user rating, and description.
 Do NOT search the web for recipes, ingredients, or history. Rely on your own internal knowledge base to fill out the description, history, ingredients, and recipe steps for the typical dishes once they are identified.
 Every restaurant and typical dish suggested must exist in reality and be backed by the search results.
+
+CRITICAL DISH RECIPE REQUIREMENT:
+- For EACH typical dish suggested, you MUST rely on your internal knowledge base to populate the 'recipe_steps' list with at least 3 detailed, step-by-step cooking steps (do not leave this empty or placeholder) and the 'ingredients' list with key ingredients. This is mandatory.
 For each restaurant suggestion, provide its website, menu page, or online review link in the 'url' field.
 
 CRITICAL RULES FOR SOURCES AND URLS:
@@ -719,39 +742,38 @@ Include the source URL of the weather provider ("https://open-meteo.com/") in th
 
 media_agent = LlmAgent(
     name="media_enrichment_agent",
-    description="Finds attributable, entity-specific Wikimedia media.",
+    description="Finds attributable images via Pexels (hotels, scenery, food), Google Images (dishes) and Wikimedia Commons (hotels, attractions).",
     model=_model(CONTROL_MODEL_NAME),
     instruction=f"""
-Use search_commons_media to find at most one image for each important named
-entity in the state below. Select only the two highest-value entities and
-make at most 2 search_commons_media calls total. Issue those calls together
-when possible. Never retry a failed or irrelevant search.
+You have three image search tools:
+- `search_pexels_media` — PRIMARY TOOL. Best for destinations, scenery, lodging, typical dishes, cuisine, and high-quality photography of travel entities (Pexels API). Use this as your first choice for all media searches.
+- `search_google_images` — Secondary fallback for regional food/dishes if Pexels has no relevant results.
+- `search_commons_media` — Secondary fallback for historical landmarks, sightseeing, and hotels if Pexels has no relevant results.
+
+Make at most 3 tool calls total. Issue calls together when possible. Never retry a failed or irrelevant search.
 
 SEARCH CONSTRAINTS:
-- Before executing any search_commons_media query, plan your query precisely and ensure you know exactly what entity you are looking for.
-- Do at most 2 search_commons_media calls total. NEVER exceed 3 calls under any circumstances.
-- Do NOT search for Wikipedia articles, only search for attributable media files in Wikimedia Commons.
+- Before any query, plan precisely what entity you are searching for.
+- Do at most 3 tool calls in total across all tools. NEVER exceed 3 calls under any circumstances.
 
-ONLY search for:
-- Dishes/food under `cuisine_result` (`typical_dishes`)
-- Lodging suggestions/hotels under `logistics_result` (`lodging_suggestions`)
-- Sightseeing spots or local events under `events_result` (`sightseeing` and `events`)
+PRIORITY ORDER — search in this order, highest priority first:
+1. DISHES/FOOD: If `cuisine_result` is present and has `typical_dishes`, you MUST use `search_pexels_media` (or `search_google_images` as fallback) to search for each of the typical dishes (up to the 3 tool calls limit). Focus on food/dishes first as your highest priority.
+2. Lodging / hotels under `logistics_result` (`lodging_suggestions`) that do NOT already have a `media` field — use `search_pexels_media` (or `search_commons_media` as fallback).
+3. Sightseeing spots or local events under `events_result` that do NOT already have a `media` field — use `search_pexels_media` (or `search_commons_media` as fallback).
 
-CRITICAL: Do NOT search for route nodes or map center in `location_result` (the application does not display images for route nodes).
+CRITICAL: Do NOT search for route nodes or map center in `location_result`.
 Do NOT search for clothing/packing checklist items in `weather_result`.
-Do NOT search for entities (hotels, attractions, events) that ALREADY have their `media` field populated in the input state. Focus your limited queries on entities that lack a media image (like typical dishes).
+Do NOT search for entities that ALREADY have their `media` field populated.
 
-SEARCH QUERY RULES (critical for finding relevant images):
-- CRITICAL: Use the official resolved names of hotels, attractions, and locations from the input state to construct your search queries.
-- For dishes/food: query ONLY the core name of the dish (e.g., "tapioca", "carne de sol", "moqueca") or with a generic regional suffix (e.g., "moqueca Brazil", "carne de sol dish"). NEVER include the specific destination city name in the dish search query to avoid empty search results.
-- For lodging/hotels: use "[hotel name] [city] Brazil architecture exterior".
+SEARCH QUERY RULES:
+- For dishes/food (use `search_pexels_media` or `search_google_images`): query the core dish name in Portuguese or English (e.g., "carne de sol", "tapioca brasileira", "moqueca baiana"). NEVER include the specific destination city name.
+- For lodging/hotels (use `search_pexels_media` or `search_commons_media`): use "[hotel name] [city] exterior".
   Example: "Pousada Mi Secreto Sao Miguel do Gostoso Brazil".
-- For events/attractions/sightseeing: use "[attraction name] [city] Brazil tourism".
+- For events/attractions (use `search_pexels_media` or `search_commons_media`): use "[attraction name] [city] Brazil tourism".
   Example: "Pelourinho Salvador Brazil tourism".
-- Do NOT use Portuguese query text — Wikimedia Commons indexes better with English queries, except for typical dish names which must be searched by their common Portuguese name (e.g., "carne de sol", "tapioca", "moqueca").
 - Do NOT reuse one image for unrelated entities.
 
-Return a compact JSON object mapping at most two stable keys to complete tool results;
+Return a compact JSON object mapping at most three stable keys to complete tool results;
 use null when no relevant media exists.
 
 location={{location_result?}}
@@ -761,7 +783,7 @@ cuisine={{cuisine_result?}}
 events={{events_result?}}
 {TRUST_BOUNDARY}
 """,
-    tools=[_mcp_toolset(["search_commons_media"])],
+    tools=[_mcp_toolset(["search_google_images", "search_commons_media", "search_pexels_media"])],
     before_tool_callback=_before_tool,
     after_tool_callback=_after_tool,
     output_key="media_grounding",

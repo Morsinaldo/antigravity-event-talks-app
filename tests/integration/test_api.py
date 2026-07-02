@@ -143,33 +143,3 @@ def test_quota_error_returns_json_429_with_request_id(tmp_path) -> None:
     assert response.json["error"]["code"] == "QUOTA_EXHAUSTED"
     assert response.json["request_id"] == response.headers["X-Request-ID"]
 
-
-def test_calculate_subsequent_module_integrates_properly(tmp_path) -> None:
-    limiter = LocalRateLimiter(max_requests=10, window_seconds=60)
-    client = make_client(tmp_path, limiter=limiter)
-
-    response = client.post(
-        "/api/orchestrate",
-        json={"destination": "Fortaleza", "selected_modules": ["road_trip"]}
-    )
-    assert response.status_code == 200
-    trip_id = response.json["trip_id"]
-
-    # Assert location result is populated, but cuisine is not
-    results = response.json["results"]
-    assert results.get("location") is not None
-    assert results.get("cuisine") is None
-
-    # Now calculate subsequent module: cuisine
-    subsequent_response = client.post(
-        f"/api/trip/{trip_id}/calculate",
-        json={"modules": ["cuisine"]}
-    )
-
-    assert subsequent_response.status_code == 200
-    assert subsequent_response.json["success"] is True
-
-    merged_results = subsequent_response.json["results"]
-    assert merged_results.get("location") is not None
-    assert merged_results.get("cuisine") is not None
-    assert merged_results["cuisine"]["shopping_list"] == ["Sal"]

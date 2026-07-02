@@ -999,18 +999,15 @@ function toggleTabPlaceholder(tabId, isPresent, moduleName, tripId) {
         } else if (moduleName === 'cuisine') {
             iconName = 'utensils-cross';
             moduleTitle = 'Gastronomia não calculada';
-            moduleDesc = 'O agente especialista em Gastronomia e Restaurantes locais não foi executado.';
-            btnText = 'Gerar Gastronomia';
+            moduleDesc = 'O agente especialista em Gastronomia e Restaurantes locais não foi executado para esta viagem.';
         } else if (moduleName === 'lodging') {
             iconName = 'hotel';
             moduleTitle = 'Hospedagem & Clima não calculado';
-            moduleDesc = 'Os agentes de Hospedagem, Transporte e Clima não foram executados.';
-            btnText = 'Gerar Hospedagem & Clima';
+            moduleDesc = 'Os agentes de Hospedagem, Transporte e Clima não foram executados para esta viagem.';
         } else if (moduleName === 'agenda') {
             iconName = 'calendar-days';
             moduleTitle = 'Atividades & Eventos não calculado';
-            moduleDesc = 'O agente especialista em Atrações Turísticas e Agenda Diária não foi executado.';
-            btnText = 'Gerar Atividades & Eventos';
+            moduleDesc = 'O agente especialista em Atrações Turísticas e Agenda Diária não foi executado para esta viagem.';
         }
 
         placeholder.innerHTML = `
@@ -1028,140 +1025,13 @@ function toggleTabPlaceholder(tabId, isPresent, moduleName, tripId) {
                 <i data-lucide="${iconName}" style="width: 32px; height: 32px;"></i>
             </div>
             <h3 style="font-size: 1.35rem; font-weight: 600; margin: 0; color: #f8fafc;">${moduleTitle}</h3>
-            <p style="font-size: 0.95rem; color: #94a3b8; margin: 0; max-width: 420px; line-height: 1.5;">${moduleDesc}</p>
-            <button class="btn-primary calculate-module-btn" data-module="${moduleName}" data-trip-id="${tripId}" style="
-                padding: 10px 24px;
-                font-weight: 550;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                cursor: pointer;
-            ">
-                <i data-lucide="play" style="width: 16px; height: 16px;"></i>
-                <span>${btnText}</span>
-            </button>
+            <p style="font-size: 0.95rem; color: #94a3b8; margin: 0; max-width: 420px; line-height: 1.5; text-align: center;">${moduleDesc}</p>
         `;
 
         // Re-run lucide icons helper so the new icons render
         if (window.lucide) {
             window.lucide.createIcons();
         }
-
-        // Add click listener
-        const btn = placeholder.querySelector('.calculate-module-btn');
-        btn.addEventListener('click', () => runSubsequentModule(moduleName, tripId));
-    }
-}
-
-async function runSubsequentModule(moduleName, tripId) {
-    if (!tripId) {
-        alert("ID da viagem não encontrado.");
-        return;
-    }
-
-    const reqId = 'req-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-    // Transition to loading screen
-    showScreen('loading-screen');
-
-    // Set headers
-    const heading = document.querySelector('#loading-screen .loading-header h2');
-    const subtitle = document.querySelector('#loading-screen .loading-header p');
-    if (heading) heading.textContent = "Calculando Módulo Adicional...";
-    if (subtitle) subtitle.textContent = "Nossos sub-agentes inteligentes estão processando o novo módulo solicitado.";
-
-    const consoleStream = document.getElementById('console-stream-content');
-    if (consoleStream) consoleStream.innerHTML = '';
-    writeConsoleLine("Orchestrator Agent", "thinking", `Disparando especialista para o módulo: ${moduleName}...`);
-
-    let logPollInterval = setInterval(async () => {
-        try {
-            const res = await fetch(`/api/orchestrate/logs/${reqId}`);
-            const logsData = await res.json();
-            if (logsData.success && logsData.logs && logsData.logs.length > 0) {
-                renderRealtimeLogs(logsData.logs, logsData.summary);
-            }
-        } catch (e) {
-            console.error("Error polling realtime logs:", e);
-        }
-    }, 1500);
-
-    try {
-        const response = await fetch(`/api/trip/${tripId}/calculate`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Request-ID': reqId
-            },
-            body: JSON.stringify({ modules: [moduleName] })
-        });
-        const data = await TripApi.readApiResponse(response);
-
-        clearInterval(logPollInterval);
-
-        if (data.success) {
-            // Display final realtime logs summary one last time before results
-            try {
-                const finalLogsRes = await fetch(`/api/orchestrate/logs/${reqId}`);
-                const finalLogsData = await finalLogsRes.json();
-                if (finalLogsData.success) {
-                    renderRealtimeLogs(finalLogsData.logs, finalLogsData.summary);
-                }
-            } catch (e) {}
-
-            await animateAgentLogs(data.logs);
-            fetchHistory();
-
-            currentTripId = data.trip_id;
-            currentTripData = {
-                id: data.trip_id,
-                title: data.title,
-                trip_type: data.trip_type,
-                result_data: data.results,
-                agent_logs: data.logs
-            };
-
-            showScreen('results-screen');
-            renderResults(data.title, data.trip_type, data.results, data.logs);
-
-            // Switch to the newly calculated tab
-            let tabId = 'tab-traces';
-            if (moduleName === 'road_trip') tabId = 'tab-map';
-            else if (moduleName === 'cuisine') tabId = 'tab-cuisine';
-            else if (moduleName === 'lodging') tabId = 'tab-logistics';
-            else if (moduleName === 'agenda') tabId = 'tab-agenda';
-
-            setTimeout(() => {
-                const activeTabLink = document.querySelector(`.tab-link[data-tab="${tabId}"]`);
-                if (activeTabLink) activeTabLink.click();
-            }, 100);
-
-        } else {
-            const errCode = data.error?.code || '';
-            const errMsg = data.error?.message || 'Erro desconhecido.';
-            const requestSuffix = data.request_id ? `\nSolicitação: ${data.request_id}` : '';
-            const displayMessage = `${errMsg}${requestSuffix}`;
-
-            if (errCode === 'QUOTA_EXHAUSTED') {
-                showOrchestrationError(
-                    '⚠️ Cota da API Gemini Esgotada',
-                    displayMessage,
-                    'quota'
-                );
-            } else {
-                showOrchestrationError(
-                    '❌ Falha no Cálculo do Módulo',
-                    displayMessage,
-                    'error'
-                );
-            }
-        }
-    } catch (error) {
-        clearInterval(logPollInterval);
-        console.error("Error calculating subsequent module:", error);
-        writeConsoleLine("System Core", "failed", "Falha de rede ao conectar com o servidor local.");
-        alert("Falha ao se conectar com o servidor.");
-        setTimeout(() => showScreen('results-screen'), 3000);
     }
 }
 
@@ -1316,7 +1186,8 @@ function renderResults(title, type, results, logs) {
         renderAgenda(evData.daily_agenda);
         const checkUl = document.getElementById('travel-checklist-ul');
         checkUl.innerHTML = '';
-        evData.travel_checklist.forEach(item => {
+        const checklist = evData.travel_checklist || [];
+        checklist.forEach(item => {
             const li = document.createElement('li');
             li.innerHTML = `<i data-lucide="check-square" class="checklist-icon"></i> <span>${escapeHtml(item)}</span>`;
             checkUl.appendChild(li);
@@ -1369,10 +1240,24 @@ function renderTypicalDishes(dishes) {
     dishes.forEach((dish, idx) => {
         const el = document.createElement('div');
         el.className = 'dish-card' + (idx === 0 ? ' active' : '');
+
+        // Build the card HTML with a thumbnail image slot
         el.innerHTML = `
-            <h4>${escapeHtml(dish.name)}</h4>
-            <p>${escapeHtml(dish.description)}</p>
+            <div class="dish-card-thumb-wrap">
+                <img class="dish-card-thumb" alt="${escapeHtml(dish.name)}" src="/static/image-placeholder.svg" />
+            </div>
+            <div class="dish-card-body">
+                <h4>${escapeHtml(dish.name)}</h4>
+                <p>${escapeHtml(dish.description)}</p>
+            </div>
         `;
+
+        // Apply validated media asset (or keep placeholder on failure)
+        const thumbEl = el.querySelector('.dish-card-thumb');
+        if (thumbEl) {
+            TripMedia.applyMediaAsset(thumbEl, null, dish.media, dish.name);
+        }
+
         el.addEventListener('click', () => {
             document.querySelectorAll('#typical-dishes-list .dish-card').forEach(c => c.classList.remove('active'));
             el.classList.add('active');
@@ -2116,7 +2001,8 @@ function renderAgenda(agenda) {
     agenda.forEach(day => {
         const el = document.createElement('div');
         el.className = 'agenda-day';
-        const actList = day.activities.map(act => `<li>${escapeHtml(act)}</li>`).join('');
+        const activities = day.activities || [];
+        const actList = activities.map(act => `<li>${escapeHtml(act)}</li>`).join('');
         el.innerHTML = `
             <div class="agenda-day-dot"></div>
             <h4>${escapeHtml(day.day)}</h4>

@@ -21,6 +21,7 @@ from trip_planner.mcp_server import (
     WeatherToolInput,
     fetch_destination_weather,
     search_commons_media_data,
+    search_pexels_media_data,
 )
 
 
@@ -150,3 +151,55 @@ async def test_media_tool_rejects_non_allowlisted_image_url() -> None:
 
     assert result.status == "unavailable"
     assert result.reason == "no_allowlisted_media"
+
+
+@pytest.mark.asyncio
+async def test_media_tool_pexels_keeps_source_and_attribution(monkeypatch) -> None:
+    monkeypatch.setenv("PEXELS_API_KEY", "dummy_key")
+    response = {
+        "photos": [
+            {
+                "url": "https://www.pexels.com/photo/praia-de-iracema-12345/",
+                "photographer": "Joey Photographer",
+                "alt": "Iracema Beach",
+                "src": {
+                    "large": "https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg"
+                }
+            }
+        ]
+    }
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=response))
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await search_pexels_media_data(
+            MediaSearchInput(query="Iracema Beach", max_results=1), client=client
+        )
+
+    assert result.status == "ok"
+    assert result.assets[0].attribution == "Joey Photographer via Pexels"
+    assert str(result.assets[0].url) == "https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg"
+    assert str(result.assets[0].source_url) == "https://www.pexels.com/photo/praia-de-iracema-12345/"
+
+
+@pytest.mark.asyncio
+async def test_media_tool_pexels_rejects_non_allowlisted_image_url(monkeypatch) -> None:
+    monkeypatch.setenv("PEXELS_API_KEY", "dummy_key")
+    response = {
+        "photos": [
+            {
+                "url": "https://evil.example/photo/bad/",
+                "photographer": "Bad Photographer",
+                "src": {
+                    "large": "https://evil.example/image.jpg"
+                }
+            }
+        ]
+    }
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=response))
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await search_pexels_media_data(
+            MediaSearchInput(query="Bad image", max_results=1), client=client
+        )
+
+    assert result.status == "unavailable"
+    assert result.reason == "no_allowlisted_media"
+

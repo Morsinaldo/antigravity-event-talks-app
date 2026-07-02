@@ -129,8 +129,10 @@ class MediaAsset(StrictModel):
             "upload.wikimedia.org",
             "commons.wikimedia.org",
             "places.googleapis.com",
+            "encrypted-tbn0.gstatic.com",  # Google Custom Search thumbnails
+            "images.pexels.com",           # Pexels API image host
         }:
-            raise ValueError("image URL must use an allowlisted Wikimedia or Google Places host")
+            raise ValueError("image URL must use an allowlisted Wikimedia, Google Places or Pexels host")
         return value
 
     @field_validator("source_url")
@@ -139,8 +141,10 @@ class MediaAsset(StrictModel):
         if value.scheme != "https" or value.host not in {
             "commons.wikimedia.org",
             "places.googleapis.com",
+            "www.google.com",              # Google Custom Search attribution links
+            "www.pexels.com",              # Pexels photo page
         }:
-            raise ValueError("source URL must use the allowlisted Commons or Google Places host")
+            raise ValueError("source URL must use the allowlisted Commons, Google Places or Pexels host")
         return value
 
 
